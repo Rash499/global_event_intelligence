@@ -60,6 +60,9 @@ Install:
 pip install -r requirements.txt
 ```
 
+Activate:
+.\.venv\Scripts\Activate.ps1
+
 Start:
 ```bash
 uvicorn app.main:app --reload --port 8000
