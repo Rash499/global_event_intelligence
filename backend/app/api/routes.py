@@ -27,12 +27,26 @@ def events(category: str | None = None, country_code: str | None = None,
     return rows
 
 @router.get("/events/latest")
-def latest_events(limit: int = Query(50, ge=1, le=200)):
+def latest_events(
+    limit: int = Query(200, ge=1, le=500)
+):
     conn = get_connection()
-    rows = [dict(x) for x in conn.execute(
-        "SELECT * FROM events ORDER BY event_time DESC LIMIT ?", (limit,)
-    ).fetchall()]
+
+    rows = [
+        dict(x)
+        for x in conn.execute(
+            """
+            SELECT *
+            FROM events
+            ORDER BY event_time DESC
+            LIMIT ?
+            """,
+            (limit,)
+        ).fetchall()
+    ]
+
     conn.close()
+
     return rows
 
 @router.get("/events/{event_id}")
@@ -54,30 +68,102 @@ def event(event_id: int):
     return result
 
 @router.get("/countries/{country_code}")
-def country(country_code: str):
+def country(
+    country_code: str,
+    limit: int = Query(200, ge=1, le=500)
+):
     conn = get_connection()
-    events = [dict(x) for x in conn.execute(
-        "SELECT * FROM events WHERE country_code=? ORDER BY event_time DESC LIMIT 100",
-        (country_code.upper(),)
-    ).fetchall()]
+
+    code = country_code.upper()
+
+    events = [
+        dict(x)
+        for x in conn.execute(
+            """
+            SELECT *
+            FROM events
+            WHERE country_code = ?
+            ORDER BY event_time DESC
+            LIMIT ?
+            """,
+            (code, limit)
+        ).fetchall()
+    ]
+
     conn.close()
-    return {"country_code": country_code.upper(), "events": events, "event_count": len(events)}
+
+    return {
+        "country_code": code,
+        "events": events,
+        "event_count": len(events)
+    }
 
 @router.get("/statistics/global")
 def statistics():
     conn = get_connection()
-    total = conn.execute("SELECT COUNT(*) c FROM events").fetchone()["c"]
-    major = conn.execute("SELECT COUNT(*) c FROM events WHERE importance >= 8").fetchone()["c"]
-    countries = conn.execute(
-        "SELECT COUNT(DISTINCT country_code) c FROM events WHERE country_code IS NOT NULL"
+
+    total = conn.execute(
+        "SELECT COUNT(*) c FROM events"
     ).fetchone()["c"]
+
+    major = conn.execute(
+        """
+        SELECT COUNT(*) c
+        FROM events
+        WHERE importance >= 8
+        """
+    ).fetchone()["c"]
+
+    countries = conn.execute(
+        """
+        SELECT COUNT(DISTINCT country_code) c
+        FROM events
+        WHERE country_code IS NOT NULL
+        """
+    ).fetchone()["c"]
+
     categories = [
-        dict(x) for x in conn.execute(
-            "SELECT category, COUNT(*) count FROM events GROUP BY category ORDER BY count DESC"
+        dict(x)
+        for x in conn.execute(
+            """
+            SELECT
+                category,
+                COUNT(*) AS count
+            FROM events
+            WHERE category IS NOT NULL
+            GROUP BY category
+            ORDER BY count DESC
+            """
         ).fetchall()
     ]
+
+    countries_by_event_count = [
+        dict(x)
+        for x in conn.execute(
+            """
+            SELECT
+                country,
+                country_code,
+                COUNT(*) AS event_count,
+                MAX(importance) AS max_importance
+            FROM events
+            WHERE country_code IS NOT NULL
+            GROUP BY country_code
+            ORDER BY event_count DESC
+            LIMIT 50
+            """
+        ).fetchall()
+    ]
+
     conn.close()
-    return {"total_events": total, "major_events": major, "countries_with_events": countries, "categories": categories}
+
+    return {
+        "total_events": total,
+        "major_events": major,
+        "countries_with_events": countries,
+        "categories": categories,
+        "countries_by_event_count": countries_by_event_count
+    }
 
 @router.post("/ingestion/run")
 async def run_ingestion():
@@ -100,3 +186,64 @@ def seed():
     conn.commit()
     conn.close()
     return {"seeded": len(demo)}
+
+@router.get("/countries/{country_code}/intelligence")
+def country_intelligence(
+    country_code: str,
+    limit: int = Query(500, ge=1, le=500)
+):
+    conn = get_connection()
+
+    code = country_code.upper()
+
+    events = [
+        dict(x)
+        for x in conn.execute(
+            """
+            SELECT *
+            FROM events
+            WHERE country_code = ?
+            ORDER BY event_time DESC
+            LIMIT ?
+            """,
+            (code, limit)
+        ).fetchall()
+    ]
+
+    total_events = len(events)
+
+    major_events = sum(
+        1 for event in events
+        if (event.get("importance") or 0) >= 8
+    )
+
+    categories = {}
+
+    for event in events:
+        category = event.get("category") or "unknown"
+
+        categories[category] = (
+            categories.get(category, 0) + 1
+        )
+
+    category_breakdown = [
+        {
+            "category": category,
+            "count": count
+        }
+        for category, count in sorted(
+            categories.items(),
+            key=lambda item: item[1],
+            reverse=True
+        )
+    ]
+
+    conn.close()
+
+    return {
+        "country_code": code,
+        "total_events": total_events,
+        "major_events": major_events,
+        "category_breakdown": category_breakdown,
+        "events": events
+    }
