@@ -57,7 +57,7 @@ export default function App() {
 
       try {
         const data =
-          await getLatestEvents(200);
+          await getLatestEvents(300);
 
         setEvents(data);
         setStatus("");
