@@ -28,7 +28,7 @@ def events(category: str | None = None, country_code: str | None = None,
 
 @router.get("/events/latest")
 def latest_events(
-    limit: int = Query(200, ge=1, le=500)
+    limit: int = Query(300, ge=1, le=500)
 ):
     conn = get_connection()
 
