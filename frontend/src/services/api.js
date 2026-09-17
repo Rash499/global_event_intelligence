@@ -5,7 +5,7 @@ export const api = axios.create({
   timeout: 30000,
 });
 
-export const getLatestEvents = async (limit = 200) => {
+export const getLatestEvents = async (limit = 300) => {
   const response = await api.get(`/events/latest?limit=${limit}`);
   return response.data;
 };
@@ -26,6 +26,13 @@ export const getGlobalStatistics = async () => {
 };
 
 export const runIngestion = async () => {
-  const response = await api.post("/ingestion/run");
+  const response = await api.post(
+    "/ingestion/run",
+    {},
+    {
+      timeout: 300000,
+    }
+  );
+
   return response.data;
 };
