@@ -4,10 +4,15 @@ import sqlite3
 from .gdelt import fetch_gdelt
 from .rss import fetch_rss
 
+from .reddit import fetch_reddit
+from .x import fetch_x
+
 from ..database.db import get_connection
 from ..processing.analyzer import analyze
 from ..ai.ollama import analyze_with_ollama
 from ..config import settings
+
+
 
 
 async def ingest():
@@ -75,6 +80,48 @@ async def ingest():
         print(
             f"[RSS ERROR] {exc}"
         )
+
+    # --------------------------------------------------
+    # 1C. Reddit
+    # --------------------------------------------------
+
+    try:
+        print("[REDDIT] Fetching posts...")
+
+        reddit_articles = await fetch_reddit(
+            max_records=50
+        )
+
+        articles.extend(reddit_articles)
+
+        print(
+            f"[REDDIT] Fetched "
+            f"{len(reddit_articles)} posts"
+        )
+
+    except Exception as exc:
+        print(f"[REDDIT ERROR] {exc}")
+
+    # --------------------------------------------------
+    # 1D. X
+    # --------------------------------------------------
+
+    try:
+        print("[X] Fetching posts...")
+
+        x_articles = await fetch_x(
+            max_records=50
+        )
+
+        articles.extend(x_articles)
+
+        print(
+            f"[X] Fetched "
+            f"{len(x_articles)} posts"
+        )
+
+    except Exception as exc:
+        print(f"[X ERROR] {exc}")
 
     # --------------------------------------------------
     # 2. Open database
