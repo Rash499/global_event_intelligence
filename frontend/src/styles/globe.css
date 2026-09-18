@@ -1,14 +1,13 @@
 
 .workspace {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 390px;
+  display: flex;
+  flex-direction: column;
   gap: 18px;
-  min-height: 720px;
 }
 
 .map-panel {
   position: relative;
-  min-height: 720px;
+  min-height: 880px;
   overflow: hidden;
 
   border: 1px solid rgba(80, 145, 185, 0.18);
@@ -30,7 +29,7 @@
 .globe {
   width: 100%;
   height: 100%;
-  min-height: 720px;
+  min-height: 880px;
 }
 
 .map-panel canvas {
@@ -39,7 +38,7 @@
 
 .latest-panel {
   min-width: 0;
-  min-height: 720px;
+  min-height: 0;
 
   overflow: hidden;
 
@@ -57,24 +56,17 @@
     0 20px 70px rgba(0, 0, 0, 0.25);
 }
 
-@media (max-width: 1200px) {
-  .workspace {
-    grid-template-columns: minmax(0, 1fr) 330px;
-  }
-}
-
 @media (max-width: 900px) {
-  .workspace {
-    grid-template-columns: 1fr;
-  }
-
-  .map-panel,
-  .latest-panel {
+  .map-panel {
     min-height: 600px;
   }
 
   .globe {
     min-height: 600px;
+  }
+
+  .latest-panel {
+    min-height: 0;
   }
 }
 
