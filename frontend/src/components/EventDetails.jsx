@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getEvent } from "../services/api";
+import { getEvent } from "../services/api.jsx";
 
 export default function EventDetails({
   event,

@@ -16,7 +16,7 @@ import GlobalEventDashboard from "./components/GlobalEventDashboard";
 import {
   getLatestEvents,
   runIngestion,
-} from "./services/api";
+} from "./services/api.jsx";
 
 import "./styles/globals.css";
 import "./styles/globe.css";

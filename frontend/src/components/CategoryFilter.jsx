@@ -1,4 +1,4 @@
-import { categories } from "../types";
+import { categories } from "../types.jsx";
 
 export default function CategoryFilter({
   selectedCategory,
