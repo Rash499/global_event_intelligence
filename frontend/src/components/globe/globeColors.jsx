@@ -18,8 +18,8 @@ export function getPolygonCapColor(country, events, selectedCountryCode) {
   return "rgba(60, 180, 255, 0.35)";
 }
 
-export const getPolygonSideColor = () => "rgba(20, 50, 70, 0.25)";
-export const getPolygonStrokeColor = () => "rgba(120, 200, 255, 0.35)";
+export const getPolygonSideColor = () => "rgba(20, 50, 70, 0.38)";
+export const getPolygonStrokeColor = () => "rgba(150, 220, 255, 0.82)";
 
 export function getPointColor(event) {
   if (event.importance >= 8) return "#ff3b5c";
