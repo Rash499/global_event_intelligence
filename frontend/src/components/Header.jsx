@@ -2,14 +2,27 @@ export default function Header({ onCollect, loading }) {
   return (
     <header className="app-header">
       <div className="header-content">
-        <div>
-          <p className="eyebrow">AI GLOBAL EVENT INTELLIGENCE</p>
+        <div className="header-brand">
+          <div className="brand-mark" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </div>
 
-          <h1>World Event Map</h1>
+          <div className="header-copy">
+            <p className="eyebrow">AI GLOBAL EVENT INTELLIGENCE</p>
 
-          <p className="subtitle">
-            Monitor important events happening around the world in real time.
-          </p>
+            <div className="title-row">
+              <h1>World Event Map</h1>
+              <span className="live-indicator">
+                <span className="live-dot" /> Live feed
+              </span>
+            </div>
+
+            <p className="subtitle">
+              Monitor important events happening around the world in real time.
+            </p>
+          </div>
         </div>
 
         <button
@@ -17,8 +30,17 @@ export default function Header({ onCollect, loading }) {
           onClick={onCollect}
           disabled={loading}
         >
-          {loading ? "Collecting..." : "Collect News"}
+          <span className="collect-icon" aria-hidden="true">
+            {loading ? "..." : "↻"}
+          </span>
+          <span>{loading ? "Collecting..." : "Collect News"}</span>
         </button>
+      </div>
+
+      <div className="header-meta" aria-label="Feed status">
+        <span><i className="meta-signal" /> Multi-source monitoring</span>
+        <span>Updated on demand</span>
+        <span>Global coverage</span>
       </div>
     </header>
   );
