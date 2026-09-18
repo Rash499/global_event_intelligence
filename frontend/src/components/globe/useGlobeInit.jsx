@@ -19,7 +19,7 @@ export function useGlobeInit(containerRef, globeRef) {
 
       if (width > 0 && height > 0) {
         globe.width(width).height(height);
-        globe.pointOfView({ lat: 0, lng: 0, altitude: 2.5 }, 0);
+        globe.pointOfView({ lat: 0, lng: 0, altitude: 2.15 }, 0);
       }
     };
 
