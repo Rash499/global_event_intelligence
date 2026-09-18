@@ -13,8 +13,9 @@ export function useEventPoints({ globeRef, events, onSelectEvent }) {
       .pointsData(validEvents)
       .pointLat("latitude")
       .pointLng("longitude")
-      .pointAltitude((event) => 0.02 + event.importance * 0.012)
-      .pointRadius((event) => 0.5 + event.importance * 0.09)
+      .pointAltitude(0.025)
+      .pointRadius(0.35)
+      .pointResolution(16)
       .pointColor(getPointColor)
       .pointLabel(getPointLabel)
       .onPointClick((event) => onSelectEvent(event));
