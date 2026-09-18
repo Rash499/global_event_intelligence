@@ -1,137 +1,149 @@
-import { useEffect, useState } from "react";
-import { getEvent } from "../services/api.jsx";
+import { useEffect, useMemo, useState } from "react";
+import { getCountryEvents } from "../services/api.jsx";
+import EventDetails from "./EventDetails";
+import EventList from "./EventList";
 
-export default function EventDetails({
-  event,
-  onBack,
-}) {
-  const [details, setDetails] = useState(event);
+const formatCategory = (category) =>
+  category ? category.replaceAll("_", " ") : "Unknown";
+
+export default function CountryDashboard({ country, onBack }) {
+  const [events, setEvents] = useState([]);
+  const [activeCategory, setActiveCategory] = useState("all");
+  const [selectedEvent, setSelectedEvent] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     let active = true;
 
-    const loadDetails = async () => {
-      try {
-        const data = await getEvent(event.id);
+    const loadCountryEvents = async () => {
+      setLoading(true);
+      setError("");
 
-        if (active) {
-          setDetails(data);
-        }
-      } catch (error) {
-        console.error("Failed to load event details:", error);
+      try {
+        const data = await getCountryEvents(country.code);
+        if (active) setEvents(data.events || []);
+      } catch (requestError) {
+        console.error("Failed to load country events:", requestError);
+        if (active) setError("Country intelligence is currently unavailable.");
       } finally {
-        if (active) {
-          setLoading(false);
-        }
+        if (active) setLoading(false);
       }
     };
 
-    loadDetails();
+    loadCountryEvents();
 
     return () => {
       active = false;
     };
-  }, [event.id]);
+  }, [country.code]);
+
+  const categories = useMemo(
+    () => [
+      "all",
+      ...new Set(events.map((event) => event.category).filter(Boolean)),
+    ],
+    [events]
+  );
+
+  const filteredEvents = useMemo(
+    () =>
+      activeCategory === "all"
+        ? events
+        : events.filter((event) => event.category === activeCategory),
+    [events, activeCategory]
+  );
+
+  const majorEvents = events.filter((event) => event.importance >= 8).length;
+  const averageImportance = events.length
+    ? (
+        events.reduce((total, event) => total + (event.importance || 0), 0) /
+        events.length
+      ).toFixed(1)
+    : "0.0";
 
   return (
-    <article className="detail-panel">
-      <button
-        className="back-button"
-        onClick={onBack}
-      >
-        ← Back to events
-      </button>
+    <section className="country-dashboard">
+      {selectedEvent ? (
+        <EventDetails
+          event={selectedEvent}
+          onBack={() => setSelectedEvent(null)}
+        />
+      ) : (
+        <>
+          <header className="country-header">
+            <button className="back-button" onClick={onBack}>
+              <span aria-hidden="true">←</span> Back to world map
+            </button>
 
-      <span className="badge">
-        {details.category?.replace("_", " ")}
-      </span>
+            <div className="country-heading">
+              <span className="country-code">{country.code} / COUNTRY BRIEF</span>
+              <h2>{country.name}</h2>
+              <p>
+                Recent intelligence signals and event activity from this country.
+              </p>
+            </div>
+          </header>
 
-      <h2>{details.title}</h2>
+          {error ? (
+            <div className="country-notice" role="alert">{error}</div>
+          ) : (
+            <>
+              <div className="country-stats">
+                <div>
+                  <strong>{loading ? "—" : events.length}</strong>
+                  <span>Total events</span>
+                </div>
+                <div>
+                  <strong>{loading ? "—" : majorEvents}</strong>
+                  <span>Major signals</span>
+                </div>
+                <div>
+                  <strong>{loading ? "—" : averageImportance}</strong>
+                  <span>Average importance</span>
+                </div>
+              </div>
 
-      <p className="detail-summary">
-        {details.summary}
-      </p>
+              <div className="country-content">
+                <div className="country-content-header">
+                  <div>
+                    <span className="section-eyebrow">Activity stream</span>
+                    <h3>{filteredEvents.length} matching events</h3>
+                  </div>
+                  <span className="country-live-status">
+                    <i /> Live dataset
+                  </span>
+                </div>
 
-      <div className="detail-grid">
-        <div>
-          <span>Country</span>
-          <strong>
-            {details.country || "Global"}
-          </strong>
-        </div>
+                <div className="country-filters" aria-label="Country event categories">
+                  {categories.map((categoryName) => (
+                    <button
+                      className={activeCategory === categoryName ? "active" : ""}
+                      key={categoryName}
+                      onClick={() => setActiveCategory(categoryName)}
+                    >
+                      {categoryName === "all" ? "All signals" : formatCategory(categoryName)}
+                      <span>
+                        {categoryName === "all"
+                          ? events.length
+                          : events.filter((event) => event.category === categoryName).length}
+                      </span>
+                    </button>
+                  ))}
+                </div>
 
-        <div>
-          <span>Importance</span>
-          <strong>
-            {details.importance}/10
-          </strong>
-        </div>
-
-        <div>
-          <span>Confidence</span>
-          <strong>
-            {Math.round(
-              details.confidence * 100
-            )}
-            %
-          </strong>
-        </div>
-
-        <div>
-          <span>Date</span>
-          <strong>
-            {details.event_time
-              ? new Date(
-                  details.event_time
-                ).toLocaleDateString()
-              : "Unknown"}
-          </strong>
-        </div>
-      </div>
-
-      {details.latitude !== null &&
-        details.longitude !== null && (
-          <div className="coordinates">
-            <span>Location</span>
-
-            <strong>
-              {details.latitude.toFixed(4)},{" "}
-              {details.longitude.toFixed(4)}
-            </strong>
-          </div>
-        )}
-
-      <div className="sources-section">
-        <h3>News Sources</h3>
-
-        {loading ? (
-          <p>Loading sources...</p>
-        ) : details.sources?.length ? (
-          <div className="sources-list">
-            {details.sources.map(
-              (source, index) => (
-                <a
-                  key={index}
-                  href={source.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <strong>
-                    {source.title}
-                  </strong>
-
-                  <small>
-                    {source.source}
-                  </small>
-                </a>
-              )
-            )}
-          </div>
-        ) : (
-          <p>No source information available.</p>
-        )}
-      </div>
-    </article>
+                {loading ? (
+                  <div className="country-loading" role="status">
+                    Loading country intelligence...
+                  </div>
+                ) : (
+                  <EventList events={filteredEvents} onSelect={setSelectedEvent} />
+                )}
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </section>
   );
 }
