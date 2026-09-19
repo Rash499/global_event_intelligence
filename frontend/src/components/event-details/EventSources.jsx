@@ -1,4 +1,6 @@
 export default function EventSources({ sources, loading }) {
+  const imageSources = sources.filter((source) => source.image_url);
+
   return (
     <div className="sources-section">
       <div className="sources-heading">
@@ -14,23 +16,49 @@ export default function EventSources({ sources, loading }) {
           <span className="loading-pulse" /> Loading source records...
         </div>
       ) : sources.length ? (
-        <div className="sources-list">
-          {sources.map((source, index) => (
-            <a
-              key={source.url || `${source.title}-${index}`}
-              href={source.url}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <span className="source-index">{String(index + 1).padStart(2, "0")}</span>
-              <span className="source-copy">
-                <strong>{source.title || "Untitled source"}</strong>
-                <small>{source.source || "Unknown publisher"}</small>
-              </span>
-              <span className="source-arrow" aria-hidden="true">↗</span>
-            </a>
-          ))}
-        </div>
+        <>
+          {imageSources.length > 0 && (
+            <div className="related-images" aria-label="Related images">
+              {imageSources.map((source, index) => (
+                <a
+                  key={`image-${source.url || index}`}
+                  href={source.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="related-image"
+                >
+                  <img
+                    src={source.image_url}
+                    alt={source.title || "Related event image"}
+                    loading="lazy"
+                    onError={(event) => {
+                      event.currentTarget.closest(".related-image")?.remove();
+                    }}
+                  />
+                  <span>{source.source || "Source image"}</span>
+                </a>
+              ))}
+            </div>
+          )}
+
+          <div className="sources-list">
+            {sources.map((source, index) => (
+              <a
+                key={source.url || `${source.title}-${index}`}
+                href={source.url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <span className="source-index">{String(index + 1).padStart(2, "0")}</span>
+                <span className="source-copy">
+                  <strong>{source.title || "Untitled source"}</strong>
+                  <small>{source.source || "Unknown publisher"}</small>
+                </span>
+                <span className="source-arrow" aria-hidden="true">↗</span>
+              </a>
+            ))}
+          </div>
+        </>
       ) : (
         <div className="sources-empty">
           <strong>No source information available</strong>

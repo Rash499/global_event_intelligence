@@ -1,8 +1,50 @@
+from html.parser import HTMLParser
+from urllib.parse import urljoin, urlparse
+
+import httpx
 from fastapi import APIRouter, Query
 from ..database.db import get_connection
 from ..ingestion.service import ingest
 
 router = APIRouter(prefix="/api")
+
+class ImageMetaParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.image_url = None
+
+    def handle_starttag(self, tag, attrs):
+        if tag.lower() != "meta" or self.image_url:
+            return
+
+        values = {name.lower(): value for name, value in attrs}
+        image_name = values.get("property", values.get("name", "")).lower()
+        if image_name in {"og:image", "twitter:image"}:
+            self.image_url = values.get("content")
+
+async def discover_image_url(url: str) -> str | None:
+    parsed_url = urlparse(url)
+    if parsed_url.scheme not in {"http", "https"}:
+        return None
+
+    try:
+        async with httpx.AsyncClient(
+            timeout=8,
+            follow_redirects=True,
+            headers={"User-Agent": "GlobalEventIntelligence/1.0"},
+        ) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+
+        parser = ImageMetaParser()
+        parser.feed(response.text[:1_000_000])
+        if not parser.image_url:
+            return None
+
+        image_url = parser.image_url
+        return urljoin(str(response.url), image_url)
+    except (httpx.HTTPError, ValueError):
+        return None
 
 @router.get("/health")
 def health():
@@ -73,7 +115,7 @@ def event_history(
     return rows
 
 @router.get("/events/{event_id}")
-def event(event_id: int):
+async def event(event_id: int):
     conn = get_connection()
     row = conn.execute("SELECT * FROM events WHERE id=?", (event_id,)).fetchone()
     if not row:
@@ -82,11 +124,27 @@ def event(event_id: int):
     result = dict(row)
     result["sources"] = [
         dict(x) for x in conn.execute(
-            """SELECT a.title,a.url,a.source,a.published_at
+            """SELECT a.title,a.url,a.source,a.published_at,a.image_url
                FROM articles a JOIN event_articles ea ON ea.article_id=a.id
                WHERE ea.event_id=?""", (event_id,)
         ).fetchall()
     ]
+
+    for source in result["sources"][:5]:
+        if source.get("image_url"):
+            continue
+
+        image_url = await discover_image_url(source["url"])
+        if not image_url:
+            continue
+
+        source["image_url"] = image_url
+        conn.execute(
+            "UPDATE articles SET image_url = ? WHERE url = ?",
+            (image_url, source["url"]),
+        )
+
+    conn.commit()
     conn.close()
     return result
 

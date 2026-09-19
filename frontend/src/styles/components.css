@@ -791,6 +791,36 @@
   margin-top: 32px;
 }
 
+.related-images {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.related-image {
+  display: block;
+  overflow: hidden;
+  border: 1px solid rgba(80, 145, 185, 0.16);
+  border-radius: 10px;
+  background: rgba(4, 18, 29, 0.8);
+  color: #8da5bb;
+  text-decoration: none;
+}
+
+.related-image img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+
+.related-image span {
+  display: block;
+  padding: 9px 11px;
+  font-size: 11px;
+}
+
 .sources-heading {
   display: flex;
   align-items: flex-end;

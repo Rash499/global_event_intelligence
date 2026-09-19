@@ -121,6 +121,11 @@ async def fetch_reddit(max_records: int = 50):
                             "selftext",
                             "",
                         )[:5000],
+                        "image_url": (
+                            post.get("thumbnail")
+                            if post.get("thumbnail", "").startswith("http")
+                            else None
+                        ),
                     })
 
             except Exception as exc:

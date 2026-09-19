@@ -22,5 +22,6 @@ async def fetch_gdelt(max_records: int = 50):
             "source": item.get("domain"),
             "published_at": item.get("seendate"),
             "description": item.get("title") or "",
+            "image_url": item.get("socialimage"),
         })
     return [x for x in results if x["url"]]

@@ -155,6 +155,8 @@ async def ingest():
             ""
         )
 
+        image_url = article.get("image_url")
+
         source = article.get(
             "source",
             "Unknown"
@@ -188,9 +190,10 @@ async def ingest():
                     source,
                     published_at,
                     description,
+                    image_url,
                     content_hash
                 )
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     title,
@@ -198,6 +201,7 @@ async def ingest():
                     source,
                     published_at,
                     description,
+                    image_url,
                     content_hash,
                 ),
             )

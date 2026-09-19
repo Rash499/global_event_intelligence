@@ -22,6 +22,7 @@ def init_db():
         source TEXT,
         published_at TEXT,
         description TEXT,
+        image_url TEXT,
         content_hash TEXT
     );
 
@@ -46,5 +47,13 @@ def init_db():
         PRIMARY KEY(event_id, article_id)
     );
     """)
+
+    article_columns = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info(articles)").fetchall()
+    }
+    if "image_url" not in article_columns:
+        conn.execute("ALTER TABLE articles ADD COLUMN image_url TEXT")
+
     conn.commit()
     conn.close()
