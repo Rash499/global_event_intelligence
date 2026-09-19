@@ -3,8 +3,8 @@ export default function GlobalDashboardHeader({ eventCount, hasActiveFilters }) 
     <div className="dashboard-header">
       <div>
         <p className="eyebrow">GLOBAL INTELLIGENCE</p>
-        <h2>All Events</h2>
-        <p>Explore global events using category, country and importance filters.</p>
+        <h2>Event History</h2>
+        <p>Previous events ordered from newest to oldest.</p>
       </div>
 
       <div className="dashboard-header-status">

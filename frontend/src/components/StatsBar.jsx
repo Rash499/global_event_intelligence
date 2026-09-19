@@ -1,16 +1,30 @@
+const isFromLastWeek = (event) => {
+  const eventTime = new Date(event.event_time).getTime();
+  const now = Date.now();
+  const oneWeekAgo = now - 7 * 24 * 60 * 60 * 1000;
+
+  return (
+    !Number.isNaN(eventTime) &&
+    eventTime >= oneWeekAgo &&
+    eventTime <= now
+  );
+};
+
 export default function StatsBar({ events }) {
-  const majorEvents = events.filter(
+  const recentEvents = events.filter(isFromLastWeek);
+
+  const majorEvents = recentEvents.filter(
     (event) => event.importance >= 8
   ).length;
 
   const countries = new Set(
-    events
+    recentEvents
       .map((event) => event.country_code)
       .filter(Boolean)
   ).size;
 
   const categories = new Set(
-    events
+    recentEvents
       .map((event) => event.category)
       .filter(Boolean)
   ).size;
@@ -22,9 +36,9 @@ export default function StatsBar({ events }) {
           <span className="stat-icon" aria-hidden="true">◈</span>
           <span className="stat-kicker">Live index</span>
         </div>
-        <strong>{events.length}</strong>
-        <span>Events loaded</span>
-        <small>Across the current feed</small>
+        <strong>{recentEvents.length}</strong>
+        <span>Events last 7 days</span>
+        <small>Current global activity</small>
       </div>
 
       <div className="stat-card stat-card-major">
@@ -33,7 +47,7 @@ export default function StatsBar({ events }) {
           <span className="stat-kicker">Priority</span>
         </div>
         <strong>{majorEvents}</strong>
-        <span>Major events</span>
+        <span>Major events last 7 days</span>
         <small>Importance score 8+</small>
       </div>
 
@@ -43,7 +57,7 @@ export default function StatsBar({ events }) {
           <span className="stat-kicker">Reach</span>
         </div>
         <strong>{countries}</strong>
-        <span>Countries</span>
+        <span>Countries last 7 days</span>
         <small>Geographies represented</small>
       </div>
 
@@ -53,7 +67,7 @@ export default function StatsBar({ events }) {
           <span className="stat-kicker">Signal mix</span>
         </div>
         <strong>{categories}</strong>
-        <span>Categories</span>
+        <span>Categories last 7 days</span>
         <small>Distinct event themes</small>
       </div>
     </section>

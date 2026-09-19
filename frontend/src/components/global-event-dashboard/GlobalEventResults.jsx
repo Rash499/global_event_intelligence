@@ -1,10 +1,10 @@
 import EventDetails from "../EventDetails";
-import EventList from "../EventList";
+import EventHistoryTable from "./EventHistoryTable";
 
 export default function GlobalEventResults({ events, selectedEvent, onSelect, onBack }) {
   if (selectedEvent) {
     return <EventDetails event={selectedEvent} onBack={onBack} />;
   }
 
-  return <EventList events={events} onSelect={onSelect} />;
+  return <EventHistoryTable events={events} onSelect={onSelect} />;
 }

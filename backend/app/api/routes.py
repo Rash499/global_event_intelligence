@@ -49,6 +49,29 @@ def latest_events(
 
     return rows
 
+@router.get("/events/history")
+def event_history(
+    limit: int = Query(1000, ge=1, le=1000)
+):
+    conn = get_connection()
+
+    rows = [
+        dict(x)
+        for x in conn.execute(
+            """
+            SELECT *
+            FROM events
+            ORDER BY event_time DESC, id DESC
+            LIMIT ?
+            """,
+            (limit,)
+        ).fetchall()
+    ]
+
+    conn.close()
+
+    return rows
+
 @router.get("/events/{event_id}")
 def event(event_id: int):
     conn = get_connection()

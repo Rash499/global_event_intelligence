@@ -10,6 +10,11 @@ export const getLatestEvents = async (limit = 300) => {
   return response.data;
 };
 
+export const getEventHistory = async (limit = 1000) => {
+  const response = await api.get(`/events/history?limit=${limit}`);
+  return response.data;
+};
+
 export const getCountryEvents = async (countryCode) => {
   const response = await api.get(`/countries/${countryCode}`);
   return response.data;

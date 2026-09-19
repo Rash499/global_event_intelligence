@@ -14,7 +14,7 @@ import CountryDashboard from "./components/CountryDashboard";
 import GlobalEventDashboard from "./components/GlobalEventDashboard";
 
 import {
-  getLatestEvents,
+  getEventHistory,
   runIngestion,
 } from "./services/api.jsx";
 
@@ -48,6 +48,18 @@ export default function App() {
   const [status, setStatus] =
     useState("");
 
+  const lastWeekEvents = events.filter((event) => {
+    const eventDate = new Date(event.event_time);
+    const now = Date.now();
+    const oneWeekAgo = now - 7 * 24 * 60 * 60 * 1000;
+
+    return (
+      !Number.isNaN(eventDate.getTime()) &&
+      eventDate.getTime() >= oneWeekAgo &&
+      eventDate.getTime() <= now
+    );
+  });
+
   /*
    * Load events
    */
@@ -56,8 +68,7 @@ export default function App() {
       setLoading(true);
 
       try {
-        const data =
-          await getLatestEvents(300);
+        const data = await getEventHistory(1000);
 
         setEvents(data);
         setStatus("");
@@ -112,8 +123,8 @@ export default function App() {
    */
   const filteredEvents =
     category === "all"
-      ? events
-      : events.filter(
+      ? lastWeekEvents
+      : lastWeekEvents.filter(
           (event) =>
             event.category === category
         );
@@ -202,7 +213,7 @@ export default function App() {
       />
 
       <StatsBar
-        events={events}
+        events={lastWeekEvents}
       />
 
       <div className="main-actions">
