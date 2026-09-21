@@ -41,3 +41,12 @@ export const runIngestion = async () => {
 
   return response.data;
 };
+
+export const getGlobalWeather = async (locations) => {
+  const response = await api.post(
+    "/weather/global",
+    { locations },
+    { timeout: 120000 }
+  );
+  return response.data;
+};
