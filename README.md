@@ -42,7 +42,7 @@ python -m venv .venv
 
 Windows PowerShell:
 ```powershell
-.venv\Scripts\Activate.ps1
+.\venv\Scripts\Activate.ps1
 ```
 
 Windows CMD:
@@ -60,9 +60,6 @@ Install:
 pip install -r requirements.txt
 ```
 
-Activate:
-.\.venv\Scripts\Activate.ps1
-
 Start:
 ```bash
 uvicorn app.main:app --reload --port 8000
@@ -74,6 +71,15 @@ API:
 - http://localhost:8000/api/health
 
 The API creates `backend/data/events.db` automatically.
+
+API routes are organized by responsibility under `backend/app/api/`:
+
+- `health.py` - health check
+- `events.py` - event queries, details, and demo seed data
+- `countries.py` - country events and intelligence
+- `statistics.py` - global statistics
+- `ingestion.py` - news ingestion
+- `routes.py` - combines the API routers
 
 ## 2. Frontend
 
@@ -166,6 +172,12 @@ global-event-intelligence/
 ├── backend/
 │   ├── app/
 │   │   ├── api/
+│   │   │   ├── countries.py
+│   │   │   ├── events.py
+│   │   │   ├── health.py
+│   │   │   ├── ingestion.py
+│   │   │   ├── routes.py
+│   │   │   └── statistics.py
 │   │   ├── ai/
 │   │   ├── database/
 │   │   ├── ingestion/
@@ -177,10 +189,10 @@ global-event-intelligence/
 ├── frontend/
 │   ├── src/
 │   │   ├── components/
-│   │   ├── pages/
 │   │   ├── services/
-│   │   ├── types/
-│   │   └── App.tsx
+│   │   ├── styles/
+│   │   ├── App.jsx
+│   │   └── main.tsx
 │   ├── package.json
 │   └── vite.config.ts
 └── README.md
@@ -191,3 +203,6 @@ global-event-intelligence/
 - News providers have their own terms, rate limits, and content licensing rules.
 - Store metadata and source URLs rather than copying entire copyrighted articles.
 - AI output is an analysis layer and should not be treated as verified fact without source review.
+
+
+![alt text](image.png)
