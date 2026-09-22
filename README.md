@@ -1,3 +1,6 @@
+![alt text](image.png)
+
+
 # Global Event Intelligence
 
 An MVP AI-powered global news/event intelligence map.
@@ -205,4 +208,3 @@ global-event-intelligence/
 - AI output is an analysis layer and should not be treated as verified fact without source review.
 
 
-![alt text](image.png)
