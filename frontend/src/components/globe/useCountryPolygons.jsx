@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 import {
   getPolygonCapColor,
   getPolygonSideColor,
@@ -14,25 +14,30 @@ export function useCountryPolygons({
   onSelectCountry,
   selectedCountryCode,
 }) {
-  const countriesRef = useRef([]);
+  const [countries, setCountries] = useState([]);
 
   useEffect(() => {
-    if (!globeRef.current) return;
+    let cancelled = false;
 
     loadWorldGeoJSON()
       .then((geojson) => {
-        countriesRef.current = geojson.features || [];
+        if (!cancelled) setCountries(geojson.features || []);
       })
       .catch((error) => {
-        console.error("Failed to load world GeoJSON:", error);
+        if (!cancelled) console.error("Failed to load world GeoJSON:", error);
       });
-  }, [globeRef]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
-    if (!globeRef.current || !countriesRef.current.length) return;
+    const globe = globeRef.current;
+    if (!globe || !countries.length) return;
 
-    globeRef.current
-      .polygonsData(countriesRef.current)
+    globe
+      .polygonsData(countries)
       .polygonCapColor((country) =>
         getPolygonCapColor(country, events, selectedCountryCode, mode, weather)
       )
@@ -46,7 +51,5 @@ export function useCountryPolygons({
 
         if (code && code !== "-99") onSelectCountry({ code, name });
       });
-  }, [globeRef, events, weather, mode, onSelectCountry, selectedCountryCode]);
-
-  return countriesRef;
+  }, [countries, events, weather, mode, onSelectCountry, selectedCountryCode, globeRef]);
 }
