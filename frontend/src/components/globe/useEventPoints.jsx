@@ -1,9 +1,9 @@
 import { useEffect } from "react";
 import { getPointColor, getPointLabel } from "./globeColors";
 
-export function useEventPoints({ globeRef, events, onSelectEvent }) {
+export function useEventPoints({ globeRef, events, enabled, onSelectEvent }) {
   useEffect(() => {
-    if (!globeRef.current) return;
+    if (!globeRef.current || !enabled) return;
 
     const validEvents = events.filter(
       (event) => event.latitude !== null && event.longitude !== null
@@ -19,5 +19,5 @@ export function useEventPoints({ globeRef, events, onSelectEvent }) {
       .pointColor(getPointColor)
       .pointLabel(getPointLabel)
       .onPointClick((event) => onSelectEvent(event));
-  }, [globeRef, events, onSelectEvent]);
+  }, [globeRef, events, enabled, onSelectEvent]);
 }
