@@ -52,6 +52,12 @@ export function useGlobeInit(containerRef, globeRef) {
     return () => {
       resizeObserver.disconnect();
 
+      globe.pointsData([]);
+      globe.ringsData([]);
+      globe.polygonsData([]);
+      globe.controls()?.dispose();
+      globe.renderer()?.dispose();
+
       if (globeRef.current === globe) {
         globeRef.current = null;
       }
