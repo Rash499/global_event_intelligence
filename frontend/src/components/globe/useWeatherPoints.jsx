@@ -12,11 +12,9 @@ function pointLabel(item) {
   return `<div style="background:#07111f;color:white;padding:10px 14px;border-radius:8px;font-family:Arial;max-width:300px;"><strong>${item.country || item.country_code || "Weather area"}</strong><br/><small>${item.current?.weather_description || "Unknown"} · Severity ${Math.round(item.score || 0)}/100</small></div>`;
 }
 
-export function useWeatherPoints({ globeRef, weather, onSelectWeather }) {
+export function useWeatherPoints({ globeRef, weather, enabled, onSelectWeather }) {
   useEffect(() => {
-    if (!globeRef.current) return;
-
-    if (!weather.length) return;
+    if (!globeRef.current || !enabled) return;
 
     const valid = weather.filter(
       (item) => Number.isFinite(item.latitude) && Number.isFinite(item.longitude)
@@ -41,5 +39,5 @@ export function useWeatherPoints({ globeRef, weather, onSelectWeather }) {
       .ringMaxRadius((item) => 1.5 + (item.score || 0) * 0.035)
       .ringPropagationSpeed(1.2)
       .ringRepeatPeriod(1600);
-  }, [globeRef, weather, onSelectWeather]);
+  }, [globeRef, weather, enabled, onSelectWeather]);
 }
