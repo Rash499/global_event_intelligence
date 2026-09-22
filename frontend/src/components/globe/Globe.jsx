@@ -32,6 +32,7 @@ export default function Globe({
   useEventPoints({
     globeRef,
     events: mode === "events" ? events : [],
+    enabled: mode === "events",
     onSelectEvent,
   });
 
@@ -43,6 +44,7 @@ export default function Globe({
   useWeatherPoints({
     globeRef,
     weather: mode === "weather" ? weather : [],
+    enabled: mode === "weather",
     onSelectWeather,
   });
 
