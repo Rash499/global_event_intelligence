@@ -97,7 +97,29 @@ npm run dev
 Open the Vite URL shown in the terminal, normally:
 http://localhost:5173
 
-## 3. Seed demo data
+The first screen provides sign-in and account registration. After signing in,
+the event map and dashboard open. Saved sessions remain active for up to 30
+days, and you can sign out from the app header.
+
+## 3. Accounts and event interactions
+
+Register with a display name, email address, and password of at least 8
+characters. Only authenticated accounts can create likes or comments. Comment
+authors are taken from the registered display name, and accounts can delete
+only their own comments. Event and comment feeds remain readable without an
+account.
+
+Authentication endpoints:
+
+- `POST /api/auth/register` - create an account and start a session
+- `POST /api/auth/login` - sign in and start a session
+- `GET /api/auth/me` - return the current account
+- `POST /api/auth/logout` - revoke the current session
+
+Passwords are stored as scrypt hashes; session tokens are stored as hashes.
+Email verification and password recovery are not currently included.
+
+## 4. Seed demo data
 
 The backend has demo events so the UI works immediately.
 
@@ -109,7 +131,7 @@ On Windows PowerShell, you can instead open:
 http://localhost:8000/docs
 and execute `POST /api/events/seed`.
 
-## 4. Collect real news
+## 5. Collect real news
 
 The frontend loads saved event history when it opens, then automatically runs
 news collection once for that page load. When collection finishes, the event
@@ -133,7 +155,7 @@ created event records.
 You can also use Swagger:
 http://localhost:8000/docs
 
-## 5. Optional local AI with Ollama
+## 6. Optional local AI with Ollama
 
 Install Ollama separately, then pull a model, for example:
 
@@ -157,7 +179,7 @@ Restart FastAPI.
 
 The ingestion service will ask the local model to classify/summarize candidate articles. If Ollama is unavailable, the application automatically falls back to deterministic analysis, so the MVP still works.
 
-## 6. API examples
+## 7. API examples
 
 Latest events:
 ```text

@@ -274,6 +274,15 @@ h1 {
     justify-content: center;
   }
 
+  .header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .header-actions .collect-button {
+    align-self: auto;
+  }
+
   .main-actions {
     justify-content: flex-start;
   }
@@ -290,5 +299,18 @@ h1 {
 
   h1 {
     font-size: 34px;
+  }
+
+  .header-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .account-label {
+    grid-column: 1 / -1;
+  }
+
+  .header-actions .collect-button {
+    width: 100%;
   }
 }

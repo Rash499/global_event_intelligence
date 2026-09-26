@@ -1,4 +1,4 @@
-export default function Header({ onCollect, loading }) {
+export default function Header({ onCollect, loading, user, onLogout }) {
   return (
     <header className="app-header">
       <div className="header-content">
@@ -25,16 +25,25 @@ export default function Header({ onCollect, loading }) {
           </div>
         </div>
 
-        <button
-          className="collect-button"
-          onClick={onCollect}
-          disabled={loading}
-        >
-          <span className="collect-icon" aria-hidden="true">
-            {loading ? "..." : "↻"}
-          </span>
-          <span>{loading ? "Collecting..." : "Collect News"}</span>
-        </button>
+        <div className="header-actions">
+          <div className="account-label">
+            <strong>{user?.display_name}</strong>
+            <span>{user?.email}</span>
+          </div>
+          <button
+            className="collect-button"
+            onClick={onCollect}
+            disabled={loading}
+          >
+            <span className="collect-icon" aria-hidden="true">
+              {loading ? "..." : "↻"}
+            </span>
+            <span>{loading ? "Collecting..." : "Collect News"}</span>
+          </button>
+          <button className="logout-button" onClick={onLogout}>
+            Sign out
+          </button>
+        </div>
       </div>
 
       <div className="header-meta" aria-label="Feed status">

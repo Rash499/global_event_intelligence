@@ -1,12 +1,12 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
-import { InteractionProvider } from "./components/interactions/InteractionProvider";
+import { AuthProvider } from "./components/auth/AuthContext";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <InteractionProvider>
+    <AuthProvider>
       <App />
-    </InteractionProvider>
+    </AuthProvider>
   </React.StrictMode>
 );

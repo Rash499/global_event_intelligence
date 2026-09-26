@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
+from .auth import get_optional_user
 from ..database.db import get_connection
 from ..database.queries import select_events
 
@@ -11,7 +12,7 @@ router = APIRouter(prefix="/api")
 def country(
     country_code: str,
     limit: int = Query(200, ge=1, le=500),
-    user_id: str | None = Query(None, max_length=120),
+    user=Depends(get_optional_user),
 ):
     conn = get_connection()
 
@@ -23,7 +24,7 @@ def country(
             params=(code,),
             order_clause="e.event_time DESC",
             limit=limit,
-            user_id=user_id,
+            user_id=user["id"] if user else None,
         )
 
         return {
@@ -40,7 +41,7 @@ def country(
 def country_intelligence(
     country_code: str,
     limit: int = Query(500, ge=1, le=500),
-    user_id: str | None = Query(None, max_length=120),
+    user=Depends(get_optional_user),
 ):
     conn = get_connection()
 
@@ -52,7 +53,7 @@ def country_intelligence(
             params=(code,),
             order_clause="e.event_time DESC",
             limit=limit,
-            user_id=user_id,
+            user_id=user["id"] if user else None,
         )
 
         categories = {}

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { getEvent } from "../../services/api.jsx";
-import { getLocalUserId } from "../../services/eventIdentity.jsx";
 import EventComments from "../interactions/EventComments";
 import EventInteractionBar from "../interactions/EventInteractionBar";
 import EventHeader from "./EventHeader";
@@ -18,7 +17,7 @@ export default function EventDetails({ event, onBack }) {
 
     const loadDetails = async () => {
       try {
-        const data = await getEvent(event.id, getLocalUserId());
+        const data = await getEvent(event.id);
 
         if (active) {
           setDetails((previous) => ({ ...previous, ...data }));

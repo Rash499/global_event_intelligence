@@ -2,10 +2,11 @@ from html.parser import HTMLParser
 from urllib.parse import urljoin, urlparse
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..database.db import get_connection
 from ..database.queries import select_event, select_events
+from .auth import get_optional_user
 
 
 router = APIRouter(prefix="/api")
@@ -66,7 +67,7 @@ def events(
     country_code: str | None = None,
     min_importance: int = Query(1, ge=1, le=10),
     limit: int = Query(50, ge=1, le=200),
-    user_id: str | None = Query(None, max_length=120),
+    user=Depends(get_optional_user),
 ):
     conn = get_connection()
 
@@ -88,7 +89,7 @@ def events(
             params=params,
             order_clause="e.event_time DESC",
             limit=limit,
-            user_id=user_id,
+            user_id=user["id"] if user else None,
         )
 
     finally:
@@ -98,7 +99,7 @@ def events(
 @router.get("/events/latest")
 def latest_events(
     limit: int = Query(300, ge=1, le=500),
-    user_id: str | None = Query(None, max_length=120),
+    user=Depends(get_optional_user),
 ):
     conn = get_connection()
 
@@ -107,7 +108,7 @@ def latest_events(
             conn,
             order_clause="e.event_time DESC",
             limit=limit,
-            user_id=user_id,
+            user_id=user["id"] if user else None,
         )
 
     finally:
@@ -117,7 +118,7 @@ def latest_events(
 @router.get("/events/history")
 def event_history(
     limit: int = Query(1000, ge=1, le=1000),
-    user_id: str | None = Query(None, max_length=120),
+    user=Depends(get_optional_user),
 ):
     conn = get_connection()
 
@@ -126,7 +127,7 @@ def event_history(
             conn,
             order_clause="e.event_time DESC, e.id DESC",
             limit=limit,
-            user_id=user_id,
+            user_id=user["id"] if user else None,
         )
 
     finally:
@@ -136,12 +137,16 @@ def event_history(
 @router.get("/events/{event_id}")
 async def event(
     event_id: int,
-    user_id: str | None = Query(None, max_length=120),
+    user=Depends(get_optional_user),
 ):
     conn = get_connection()
 
     try:
-        result = select_event(conn, event_id, user_id=user_id)
+        result = select_event(
+            conn,
+            event_id,
+            user_id=user["id"] if user else None,
+        )
 
         if not result:
             raise HTTPException(status_code=404, detail="Event not found")

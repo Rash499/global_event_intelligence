@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import Globe from "./components/Globe";
 import AlertToast from "./components/AlertToast";
+import AuthLanding from "./components/auth/AuthLanding";
+import { useAuth } from "./components/auth/AuthContext";
+import { InteractionProvider } from "./components/interactions/InteractionProvider";
 import Header from "./components/Header";
 import StatsBar from "./components/StatsBar";
 import CategoryFilter from "./components/CategoryFilter";
@@ -18,10 +21,10 @@ import {
   getGlobalWeather,
   runIngestion,
 } from "./services/api.jsx";
-import { getLocalUserId } from "./services/eventIdentity.jsx";
 import { loadWorldGeoJSON } from "./services/worldGeoJson.jsx";
 
 import "./styles/globals.css";
+import "./styles/auth.css";
 import "./styles/alerts.css";
 import "./styles/globe.css";
 import "./styles/dashboard.css";
@@ -89,7 +92,7 @@ async function loadWeatherLocations() {
     .filter(Boolean);
 }
 
-export default function App() {
+function IntelligenceWorkspace({ user, onLogout }) {
   const [events, setEvents] = useState([]);
   const [category, setCategory] = useState("all");
   const [selectedEvent, setSelectedEvent] = useState(null);
@@ -121,7 +124,7 @@ export default function App() {
   const loadEvents = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await getEventHistory(1000, getLocalUserId());
+      const data = await getEventHistory(1000);
       setEvents(data);
       setStatus("");
     } catch (error) {
@@ -284,7 +287,12 @@ export default function App() {
   return (
     <main className="app">
       <AlertToast message={eventAlert} onDismiss={dismissEventAlert} />
-      <Header onCollect={handleCollect} loading={collecting} />
+      <Header
+        onCollect={handleCollect}
+        loading={collecting}
+        user={user}
+        onLogout={onLogout}
+      />
 
       <div className="mode-bar">
         <WeatherModeToggle mode={mode} onChange={handleModeChange} />
@@ -358,5 +366,21 @@ export default function App() {
         )}
       </section>
     </main>
+  );
+}
+
+export default function App() {
+  const { user, loading, logout } = useAuth();
+
+  if (loading) {
+    return <main className="auth-loading" role="status">Restoring your session...</main>;
+  }
+
+  if (!user) return <AuthLanding />;
+
+  return (
+    <InteractionProvider key={user.id}>
+      <IntelligenceWorkspace user={user} onLogout={logout} />
+    </InteractionProvider>
   );
 }

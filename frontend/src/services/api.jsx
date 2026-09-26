@@ -1,35 +1,57 @@
 import axios from "axios";
+import { getAuthToken } from "./authSession.jsx";
 
 export const api = axios.create({
   baseURL: "http://localhost:8000/api",
   timeout: 30000,
 });
 
-export const getLatestEvents = async (limit = 300, userId) => {
+api.interceptors.request.use((config) => {
+  const token = getAuthToken();
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+export const registerAccount = async (account) => {
+  const response = await api.post("/auth/register", account);
+  return response.data;
+};
+
+export const loginAccount = async (credentials) => {
+  const response = await api.post("/auth/login", credentials);
+  return response.data;
+};
+
+export const getCurrentAccount = async () => {
+  const response = await api.get("/auth/me");
+  return response.data;
+};
+
+export const logoutAccount = async () => {
+  await api.post("/auth/logout");
+};
+
+export const getLatestEvents = async (limit = 300) => {
   const response = await api.get("/events/latest", {
-    params: { limit, ...(userId ? { user_id: userId } : {}) },
+    params: { limit },
   });
   return response.data;
 };
 
-export const getEventHistory = async (limit = 1000, userId) => {
+export const getEventHistory = async (limit = 1000) => {
   const response = await api.get("/events/history", {
-    params: { limit, ...(userId ? { user_id: userId } : {}) },
+    params: { limit },
   });
   return response.data;
 };
 
-export const getCountryEvents = async (countryCode, userId) => {
-  const response = await api.get(`/countries/${countryCode}`, {
-    params: userId ? { user_id: userId } : {},
-  });
+export const getCountryEvents = async (countryCode) => {
+  const response = await api.get(`/countries/${countryCode}`);
   return response.data;
 };
 
-export const getEvent = async (eventId, userId) => {
-  const response = await api.get(`/events/${eventId}`, {
-    params: userId ? { user_id: userId } : {},
-  });
+export const getEvent = async (eventId) => {
+  const response = await api.get(`/events/${eventId}`);
   return response.data;
 };
 
@@ -59,48 +81,36 @@ export const getGlobalWeather = async (locations) => {
   return response.data;
 };
 
-export const getEventInteractionSummary = async (eventIds, userId) => {
+export const getEventInteractionSummary = async (eventIds) => {
   const response = await api.get("/interactions/summary", {
-    params: {
-      event_ids: eventIds.join(","),
-      user_id: userId,
-    },
+    params: { event_ids: eventIds.join(",") },
   });
 
   return response.data;
 };
 
-export const getEventInteractions = async (eventId, userId) => {
-  const response = await api.get(`/events/${eventId}/interactions`, {
-    params: { user_id: userId },
-  });
+export const getEventInteractions = async (eventId) => {
+  const response = await api.get(`/events/${eventId}/interactions`);
 
   return response.data;
 };
 
-export const toggleEventLike = async (eventId, userId) => {
-  const response = await api.post(`/events/${eventId}/like`, {
-    user_id: userId,
-  });
+export const toggleEventLike = async (eventId) => {
+  const response = await api.post(`/events/${eventId}/like`);
 
   return response.data;
 };
 
-export const addEventComment = async (eventId, { userId, body, author }) => {
+export const addEventComment = async (eventId, { body }) => {
   const response = await api.post(`/events/${eventId}/comments`, {
-    user_id: userId,
     body,
-    author,
   });
 
   return response.data;
 };
 
-export const deleteEventComment = async (eventId, commentId, userId) => {
-  const response = await api.delete(
-    `/events/${eventId}/comments/${commentId}`,
-    { params: { user_id: userId } }
-  );
+export const deleteEventComment = async (eventId, commentId) => {
+  const response = await api.delete(`/events/${eventId}/comments/${commentId}`);
 
   return response.data;
 };

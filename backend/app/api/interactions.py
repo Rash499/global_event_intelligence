@@ -1,24 +1,18 @@
 """User engagement endpoints: likes and comments on events."""
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from .auth import get_optional_user, require_user
 from ..database.db import get_connection
 
 router = APIRouter(prefix="/api")
 
 MAX_COMMENT_LENGTH = 2000
-DEFAULT_AUTHOR = "Guest analyst"
-
-
-class LikeRequest(BaseModel):
-    user_id: str = Field(min_length=1, max_length=120)
 
 
 class CommentRequest(BaseModel):
-    user_id: str = Field(min_length=1, max_length=120)
     body: str = Field(min_length=1, max_length=MAX_COMMENT_LENGTH)
-    author: str | None = Field(default=None, max_length=80)
 
 
 def _require_event(conn, event_id: int) -> None:
@@ -84,8 +78,8 @@ def _comments(conn, event_id: int, user_id: str | None = None) -> list[dict]:
 
 @router.get("/interactions/summary")
 def interaction_summary(
-    event_ids: str = Query(..., description="Comma separated event ids"),
-    user_id: str | None = Query(None, max_length=120),
+    event_ids: str,
+    user=Depends(get_optional_user),
 ):
     """Bulk like/comment counts so long event lists render in one request."""
 
@@ -134,14 +128,14 @@ def interaction_summary(
 
         liked_ids = set()
 
-        if user_id:
+        if user:
             liked_rows = conn.execute(
                 f"""
                 SELECT event_id
                 FROM event_likes
                 WHERE user_id = ? AND event_id IN ({placeholders})
                 """,
-                [user_id, *ids],
+                [user["id"], *ids],
             ).fetchall()
 
             liked_ids = {row["event_id"] for row in liked_rows}
@@ -167,7 +161,7 @@ def interaction_summary(
 @router.get("/events/{event_id}/interactions")
 def event_interactions(
     event_id: int,
-    user_id: str | None = Query(None, max_length=120),
+    user=Depends(get_optional_user),
 ):
     conn = get_connection()
 
@@ -178,8 +172,8 @@ def event_interactions(
             "event_id": event_id,
             "like_count": _like_count(conn, event_id),
             "comment_count": _comment_count(conn, event_id),
-            "liked": _user_liked(conn, event_id, user_id),
-            "comments": _comments(conn, event_id, user_id),
+            "liked": _user_liked(conn, event_id, user["id"] if user else None),
+            "comments": _comments(conn, event_id, user["id"] if user else None),
         }
 
     finally:
@@ -187,7 +181,7 @@ def event_interactions(
 
 
 @router.post("/events/{event_id}/like")
-def toggle_like(event_id: int, payload: LikeRequest):
+def toggle_like(event_id: int, user=Depends(require_user)):
     conn = get_connection()
 
     try:
@@ -199,7 +193,7 @@ def toggle_like(event_id: int, payload: LikeRequest):
             FROM event_likes
             WHERE event_id = ? AND user_id = ?
             """,
-            (event_id, payload.user_id),
+            (event_id, user["id"]),
         ).fetchone()
 
         if existing:
@@ -208,7 +202,7 @@ def toggle_like(event_id: int, payload: LikeRequest):
                 DELETE FROM event_likes
                 WHERE event_id = ? AND user_id = ?
                 """,
-                (event_id, payload.user_id),
+                (event_id, user["id"]),
             )
             liked = False
         else:
@@ -217,7 +211,7 @@ def toggle_like(event_id: int, payload: LikeRequest):
                 INSERT INTO event_likes(event_id, user_id)
                 VALUES (?, ?)
                 """,
-                (event_id, payload.user_id),
+                (event_id, user["id"]),
             )
             liked = True
 
@@ -234,13 +228,19 @@ def toggle_like(event_id: int, payload: LikeRequest):
 
 
 @router.post("/events/{event_id}/comments")
-def create_comment(event_id: int, payload: CommentRequest):
+def create_comment(
+    event_id: int,
+    payload: CommentRequest,
+    user=Depends(require_user),
+):
     body = payload.body.strip()
 
     if not body:
         raise HTTPException(status_code=422, detail="Comment cannot be empty")
+    if len(body) > MAX_COMMENT_LENGTH:
+        raise HTTPException(status_code=422, detail="Comment is too long")
 
-    author = (payload.author or "").strip() or DEFAULT_AUTHOR
+    author = user["display_name"]
 
     conn = get_connection()
 
@@ -252,7 +252,7 @@ def create_comment(event_id: int, payload: CommentRequest):
             INSERT INTO event_comments(event_id, user_id, author, body)
             VALUES (?, ?, ?, ?)
             """,
-            (event_id, payload.user_id, author, body),
+            (event_id, user["id"], author, body),
         )
 
         conn.commit()
@@ -267,7 +267,7 @@ def create_comment(event_id: int, payload: CommentRequest):
         ).fetchone()
 
         return {
-            "comment": _serialize_comment(row, payload.user_id),
+            "comment": _serialize_comment(row, user["id"]),
             "comment_count": _comment_count(conn, event_id),
         }
 
@@ -279,7 +279,7 @@ def create_comment(event_id: int, payload: CommentRequest):
 def delete_comment(
     event_id: int,
     comment_id: int,
-    user_id: str = Query(..., min_length=1, max_length=120),
+    user=Depends(require_user),
 ):
     conn = get_connection()
 
@@ -298,7 +298,7 @@ def delete_comment(
         if not row:
             raise HTTPException(status_code=404, detail="Comment not found")
 
-        if row["user_id"] != user_id:
+        if row["user_id"] != user["id"]:
             raise HTTPException(
                 status_code=403,
                 detail="You can only delete your own comments",

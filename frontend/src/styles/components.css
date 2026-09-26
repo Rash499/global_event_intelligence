@@ -62,6 +62,47 @@
   animation: collect-spin 1s linear infinite;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.account-label {
+  display: flex;
+  min-width: 120px;
+  flex-direction: column;
+  gap: 3px;
+  padding-right: 8px;
+  color: #d6e8e8;
+}
+
+.account-label strong {
+  font-size: 12px;
+}
+
+.account-label span {
+  color: #68899b;
+  font-size: 10px;
+}
+
+.logout-button {
+  padding: 10px 12px;
+  border: 1px solid rgba(80, 145, 185, 0.22);
+  border-radius: 8px;
+  background: rgba(7, 23, 36, 0.75);
+  color: #99b6c8;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.logout-button:hover {
+  border-color: rgba(56, 189, 248, 0.45);
+  color: #e4f6ff;
+}
+
 @keyframes collect-spin {
   to { transform: rotate(360deg); }
 }
@@ -821,12 +862,11 @@
 
 .comment-composer {
   display: grid;
-  grid-template-columns: minmax(96px, 130px) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   margin: 12px 0 10px;
 }
 
-.comment-author-input,
 .comment-input {
   width: 100%;
   min-width: 0;
@@ -838,12 +878,10 @@
   font-size: 12.5px;
 }
 
-.comment-author-input::placeholder,
 .comment-input::placeholder {
   color: #5f7b90;
 }
 
-.comment-author-input:focus-visible,
 .comment-input:focus-visible,
 .comment-submit:focus-visible,
 .comment-delete:focus-visible,

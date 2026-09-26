@@ -13,7 +13,7 @@ import {
   getEventInteractions,
   toggleEventLike,
 } from "../../services/api.jsx";
-import { getLocalUserId } from "../../services/eventIdentity.jsx";
+import { useAuth } from "../auth/AuthContext";
 
 const InteractionContext = createContext(null);
 
@@ -36,7 +36,8 @@ const buildInteraction = (event) => ({
 });
 
 export function InteractionProvider({ children }) {
-  const userId = useMemo(() => getLocalUserId(), []);
+  const { user } = useAuth();
+  const userId = user?.id;
   const [interactions, setInteractions] = useState({});
   const interactionsRef = useRef(interactions);
 
@@ -74,7 +75,7 @@ export function InteractionProvider({ children }) {
       });
 
       try {
-        const data = await toggleEventLike(eventId, userId);
+        const data = await toggleEventLike(eventId);
 
         updateInteraction(eventId, {
           liked: Boolean(data.liked),
@@ -92,7 +93,7 @@ export function InteractionProvider({ children }) {
         });
       }
     },
-    [updateInteraction, userId]
+    [updateInteraction]
   );
 
   const loadComments = useCallback(
@@ -106,7 +107,7 @@ export function InteractionProvider({ children }) {
       updateInteraction(eventId, { loadingComments: true, error: "" });
 
       try {
-        const data = await getEventInteractions(eventId, userId);
+        const data = await getEventInteractions(eventId);
 
         updateInteraction(eventId, {
           like_count: Number(data.like_count) || 0,
@@ -125,17 +126,13 @@ export function InteractionProvider({ children }) {
         });
       }
     },
-    [updateInteraction, userId]
+    [updateInteraction]
   );
 
   const postComment = useCallback(
-    async (event, body, author) => {
+    async (event, body) => {
       try {
-        const data = await addEventComment(event.id, {
-          userId,
-          body,
-          author,
-        });
+        const data = await addEventComment(event.id, { body });
 
         updateInteraction(event.id, (current) => ({
           ...current,
@@ -155,13 +152,13 @@ export function InteractionProvider({ children }) {
         return false;
       }
     },
-    [updateInteraction, userId]
+    [updateInteraction]
   );
 
   const removeComment = useCallback(
     async (eventId, commentId) => {
       try {
-        const data = await deleteEventComment(eventId, commentId, userId);
+        const data = await deleteEventComment(eventId, commentId);
 
         updateInteraction(eventId, (current) => ({
           ...current,
@@ -181,7 +178,7 @@ export function InteractionProvider({ children }) {
         });
       }
     },
-    [updateInteraction, userId]
+    [updateInteraction]
   );
 
   const syncEvent = useCallback(
