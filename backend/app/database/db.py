@@ -46,6 +46,28 @@ def init_db():
         article_id INTEGER NOT NULL,
         PRIMARY KEY(event_id, article_id)
     );
+
+    CREATE TABLE IF NOT EXISTS event_likes (
+        event_id INTEGER NOT NULL,
+        user_id TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY(event_id, user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS event_comments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id INTEGER NOT NULL,
+        user_id TEXT NOT NULL,
+        author TEXT,
+        body TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_event_comments_event
+        ON event_comments(event_id);
+
+    CREATE INDEX IF NOT EXISTS idx_event_likes_event
+        ON event_likes(event_id);
     """)
 
     article_columns = {
