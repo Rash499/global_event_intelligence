@@ -15,6 +15,8 @@ import GlobalEventDashboard from "./components/GlobalEventDashboard";
 import WeatherModeToggle from "./components/weather/WeatherModeToggle";
 import WeatherPanel from "./components/weather/WeatherPanel";
 import WeatherDashboard from "./components/weather/WeatherDashboard";
+import CountryMiniMap from "./components/weather/CountryMiniMap";
+
 
 import {
   getEventHistory,
@@ -270,8 +272,14 @@ function IntelligenceWorkspace({ user, onLogout }) {
 
   if (selectedWeather) {
     return (
-      <main className="app">
-        <WeatherDashboard weather={selectedWeather} onBack={() => setSelectedWeather(null)} />
+      <main className="app weather-brief-page">
+        <WeatherDashboard
+          weather={selectedWeather}
+          weatherList={weather}
+          miniMap={<CountryMiniMap weather={selectedWeather} />}
+          onBack={() => setSelectedWeather(null)}
+          onSelect={handleWeatherSelect}
+        />
       </main>
     );
   }
@@ -375,7 +383,7 @@ function IntelligenceWorkspace({ user, onLogout }) {
             />
           </aside>
         ) : (
-          <WeatherPanel weather={weather} onSelect={handleWeatherSelect} />
+          <WeatherPanel weather={weather} onSelect={handleWeatherSelect} selectedCode={selectedWeather?.country_code} />
         )}
       </section>
     </main>
