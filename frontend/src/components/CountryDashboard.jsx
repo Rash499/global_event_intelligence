@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { getCountryEvents } from "../services/api.jsx";
+import { getLocalUserId } from "../services/eventIdentity.jsx";
 import EventDetails from "./EventDetails";
 import EventList from "./EventList";
 
@@ -21,7 +22,7 @@ export default function CountryDashboard({ country, onBack }) {
       setError("");
 
       try {
-        const data = await getCountryEvents(country.code);
+        const data = await getCountryEvents(country.code, getLocalUserId());
         if (active) setEvents(data.events || []);
       } catch (requestError) {
         console.error("Failed to load country events:", requestError);
