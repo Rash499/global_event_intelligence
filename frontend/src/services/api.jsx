@@ -55,6 +55,11 @@ export const getEvent = async (eventId) => {
   return response.data;
 };
 
+export const getEventImage = async (eventId) => {
+  const response = await api.get(`/events/${eventId}/image`);
+  return response.data;
+};
+
 export const getGlobalStatistics = async () => {
   const response = await api.get("/statistics/global");
   return response.data;
