@@ -111,13 +111,24 @@ and execute `POST /api/events/seed`.
 
 ## 4. Collect real news
 
-Run:
+The frontend loads saved event history when it opens, then automatically runs
+news collection once for that page load. When collection finishes, the event
+feed refreshes automatically. You can also use the **Collect News** button to
+run collection again at any time.
+
+When collection creates events, the app shows a dismissible alert with the
+number of new events detected. The alert closes automatically after eight
+seconds. If no events are created, the collection status reports that no new
+events were detected. Duplicate articles are skipped by the ingestion service.
+
+To collect directly from the backend, run:
 
 ```bash
 curl -X POST http://localhost:8000/api/ingestion/run
 ```
 
-This collects GDELT news and RSS feeds, normalizes articles, creates event records, and stores them.
+This collects available source articles, analyzes them, and stores newly
+created event records.
 
 You can also use Swagger:
 http://localhost:8000/docs

@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import Globe from "./components/Globe";
+import AlertToast from "./components/AlertToast";
 import Header from "./components/Header";
 import StatsBar from "./components/StatsBar";
 import CategoryFilter from "./components/CategoryFilter";
@@ -21,6 +22,7 @@ import { getLocalUserId } from "./services/eventIdentity.jsx";
 import { loadWorldGeoJSON } from "./services/worldGeoJson.jsx";
 
 import "./styles/globals.css";
+import "./styles/alerts.css";
 import "./styles/globe.css";
 import "./styles/dashboard.css";
 import "./styles/components.css";
@@ -101,6 +103,8 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [collecting, setCollecting] = useState(false);
   const [status, setStatus] = useState("");
+  const [eventAlert, setEventAlert] = useState("");
+  const automaticCollectionStarted = useRef(false);
 
   const lastWeekEvents = events.filter((event) => {
     const eventDate = new Date(event.event_time);
@@ -128,10 +132,6 @@ export default function App() {
     }
   }, []);
 
-  useEffect(() => {
-    loadEvents();
-  }, [loadEvents]);
-
   const loadWeather = useCallback(async () => {
     if (weather.length) return;
 
@@ -156,21 +156,52 @@ export default function App() {
     if (mode === "weather") loadWeather();
   }, [mode, loadWeather]);
 
-  const handleCollect = async () => {
+  const collectEvents = useCallback(async (automatic = false) => {
     setCollecting(true);
-    setStatus("Collecting latest global news...");
+    setStatus(
+      automatic ? "Checking for new global events..." : "Collecting latest global news..."
+    );
 
     try {
-      await runIngestion();
+      const result = await runIngestion();
       await loadEvents();
-      setStatus("News collection completed.");
+      const newEventCount = Number(result?.events_created) || 0;
+      if (newEventCount > 0) {
+        setEventAlert(
+          `${newEventCount} new ${newEventCount === 1 ? "event" : "events"} detected`
+        );
+      }
+      setStatus(
+        newEventCount
+          ? `New events detected: ${newEventCount} ${newEventCount === 1 ? "event" : "events"} added.`
+          : "Collection completed. No new events detected."
+      );
     } catch (error) {
       console.error(error);
-      setStatus("News collection failed. Check the backend terminal.");
+      setStatus(
+        automatic
+          ? "Automatic news collection failed. Check the backend connection."
+          : "News collection failed. Check the backend connection."
+      );
     } finally {
       setCollecting(false);
     }
-  };
+  }, [loadEvents]);
+
+  const handleCollect = () => collectEvents();
+  const dismissEventAlert = useCallback(() => setEventAlert(""), []);
+
+  useEffect(() => {
+    if (automaticCollectionStarted.current) return;
+    automaticCollectionStarted.current = true;
+
+    const initializeFeed = async () => {
+      await loadEvents();
+      await collectEvents(true);
+    };
+
+    initializeFeed();
+  }, [collectEvents, loadEvents]);
 
   const filteredEvents = useMemo(
     () =>
@@ -252,6 +283,7 @@ export default function App() {
 
   return (
     <main className="app">
+      <AlertToast message={eventAlert} onDismiss={dismissEventAlert} />
       <Header onCollect={handleCollect} loading={collecting} />
 
       <div className="mode-bar">
@@ -269,7 +301,11 @@ export default function App() {
         <>
           <StatsBar events={lastWeekEvents} />
           <CategoryFilter selectedCategory={category} onChange={setCategory} />
-          {status && <div className="notice">{status}</div>}
+          {status && (
+            <div className="notice" role="status" aria-live="polite">
+              {status}
+            </div>
+          )}
         </>
       ) : (
         <div className="weather-mode-header">
@@ -311,7 +347,11 @@ export default function App() {
               </div>
               <span>{filteredEvents.length}</span>
             </div>
-            <EventList events={filteredEvents.slice(0, 15)} onSelect={handleEventSelect} />
+            <EventList
+              events={filteredEvents.slice(0, 15)}
+              onSelect={handleEventSelect}
+              variant="grid"
+            />
           </aside>
         ) : (
           <WeatherPanel weather={weather} onSelect={handleWeatherSelect} />

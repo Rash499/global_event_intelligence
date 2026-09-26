@@ -1,6 +1,6 @@
 import EventCard from "./EventCard";
 
-export default function EventList({ events, onSelect }) {
+export default function EventList({ events, onSelect, variant = "list" }) {
   if (!events.length) {
     return (
       <div className="empty-state event-empty-state">
@@ -14,7 +14,7 @@ export default function EventList({ events, onSelect }) {
   return (
     <div className="event-list">
       {events.map((event) => (
-        <EventCard key={event.id} event={event} variant="list" onSelect={onSelect} />
+        <EventCard key={event.id} event={event} variant={variant} onSelect={onSelect} />
       ))}
     </div>
   );

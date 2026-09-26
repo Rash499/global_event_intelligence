@@ -182,14 +182,28 @@
   height: 100%;
 }
 
+.latest-panel .event-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  max-height: 850px;
+  padding: 16px;
+}
+
+.latest-panel .event-card {
+  height: 100%;
+}
+
 @media (max-width: 1200px) {
-  .event-history-grid {
+  .event-history-grid,
+  .latest-panel .event-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 760px) {
-  .event-history-grid {
+  .event-history-grid,
+  .latest-panel .event-list {
     grid-template-columns: 1fr;
   }
 }

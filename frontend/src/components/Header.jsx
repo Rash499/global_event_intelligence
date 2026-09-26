@@ -39,7 +39,7 @@ export default function Header({ onCollect, loading }) {
 
       <div className="header-meta" aria-label="Feed status">
         <span><i className="meta-signal" /> Multi-source monitoring</span>
-        <span>Updated on demand</span>
+        <span>Auto-check on page load</span>
         <span>Global coverage</span>
       </div>
     </header>
