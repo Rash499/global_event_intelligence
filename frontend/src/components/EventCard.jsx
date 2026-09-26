@@ -4,6 +4,7 @@ import { formatRelativeTime } from "../services/dateFormat.jsx";
 import EventComments from "./interactions/EventComments";
 import EventInteractionBar from "./interactions/EventInteractionBar";
 import { useEventInteractions } from "./interactions/InteractionProvider";
+import { getEventImage } from "../services/api.jsx";
 
 const severityIcons = {
   critical: "!",
@@ -33,7 +34,26 @@ export default function EventCard({ event, variant = "grid", onSelect }) {
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
+  const [imageUrl, setImageUrl] = useState(event.image_url || "");
   const { syncEvent } = useEventInteractions();
+
+  useEffect(() => {
+    setImageUrl(event.image_url || "");
+    setImageFailed(false);
+
+    if (variant !== "grid" || event.image_url) return undefined;
+
+    let active = true;
+    getEventImage(event.id)
+      .then((data) => {
+        if (active && data.image_url) setImageUrl(data.image_url);
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [event.id, event.image_url, variant]);
 
   useEffect(() => {
     syncEvent(event);
@@ -47,7 +67,7 @@ export default function EventCard({ event, variant = "grid", onSelect }) {
   ]);
 
   const severity = getSeverity(event.importance);
-  const showImage = Boolean(event.image_url) && !imageFailed;
+  const showImage = Boolean(imageUrl) && !imageFailed;
   const eventTime = formatRelativeTime(event.event_time);
 
   const fullEventTime = event.event_time
@@ -90,7 +110,7 @@ export default function EventCard({ event, variant = "grid", onSelect }) {
         <span className="event-card-media">
           {showImage ? (
             <img
-              src={event.image_url}
+              src={imageUrl}
               alt=""
               loading="lazy"
               onError={() => setImageFailed(true)}
