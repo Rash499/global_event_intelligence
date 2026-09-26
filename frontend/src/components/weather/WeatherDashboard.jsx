@@ -18,6 +18,82 @@ const iconFor = (desc = "") => {
   if (t.includes("clear") || t.includes("sun")) return "☀️";
   return "🌤️";
 };
+const clamp100 = (value) => Math.min(100, Math.max(0, Number(value) || 0));
+
+// Weights mirror the backend scoring model (25/30/20/25) so the ledger shown to
+// the user reconciles with the headline 0-100 score.
+const FACTOR_WEIGHTS = { temperature: 0.25, precipitation: 0.3, wind: 0.2, severe_weather: 0.25 };
+const FACTOR_ORDER = ["temperature", "precipitation", "wind", "severe_weather"];
+const FACTOR_META = {
+  temperature: { label: "Temperature", metric: "Current, focus-day max and min" },
+  precipitation: { label: "Precipitation", metric: "Rain volume plus probability" },
+  wind: { label: "Wind", metric: "Sustained speed and gusts" },
+  severe_weather: { label: "Severe weather", metric: "WMO weather code severity" },
+};
+
+const FACTOR_BANDS = {
+  temperature: [
+    { min: 95, note: "Extreme thermal stress: 45°C or hotter, or -15°C or colder." },
+    { min: 84, note: "Severe heat above 40°C with elevated health risk." },
+    { min: 72, note: "Hard freeze between -5°C and -15°C." },
+    { min: 66, note: "High heat between 35°C and 40°C." },
+    { min: 48, note: "Freezing readings between 0°C and -5°C." },
+    { min: 42, note: "Elevated heat between 32°C and 35°C." },
+    { min: 1, note: "Mild thermal discomfort, no extreme band reached." },
+    { min: 0, note: "Comfortable range: no heat or cold contribution." },
+  ],
+  precipitation: [
+    { min: 80, note: "Extreme rainfall: flooding and transport disruption likely." },
+    { min: 60, note: "Very heavy rain or near-certain downpours expected." },
+    { min: 40, note: "Heavy rain spells with standing water possible." },
+    { min: 20, note: "Moderate rain, disruptive but manageable." },
+    { min: 1, note: "Light rain or low rainfall probability." },
+    { min: 0, note: "Dry conditions across the sampled horizon." },
+  ],
+  wind: [
+    { min: 75, note: "Damaging wind: structural damage and travel bans possible." },
+    { min: 55, note: "Severe wind, gusts strong enough to down trees and power lines." },
+    { min: 35, note: "Strong wind: loose objects airborne, ferries and flights at risk." },
+    { min: 18, note: "Gusty spells, mostly a nuisance rather than a hazard." },
+    { min: 1, note: "Breezy but well inside normal limits." },
+    { min: 0, note: "Calm wind profile." },
+  ],
+  severe_weather: [
+    { min: 90, note: "Thunderstorm code present in the sampled conditions." },
+    { min: 65, note: "Violent showers, heavy snow or hail codes present." },
+    { min: 35, note: "Moderate severe codes: heavy rain or snow showers." },
+    { min: 15, note: "Light rain or snow codes only." },
+    { min: 0, note: "No severe weather codes reported." },
+  ],
+};
+
+function bandNote(bands, value) {
+  const score = clamp100(value);
+  for (let i = 0; i < bands.length; i += 1) {
+    if (score >= bands[i].min) return bands[i].note;
+  }
+  return bands[bands.length - 1].note;
+}
+
+function explainFactor(key, value) {
+  return bandNote(FACTOR_BANDS[key] || FACTOR_BANDS.temperature, value);
+}
+
+function readingFor(key, current = {}, focus = null) {
+  const now = current || {};
+  const ahead = focus || {};
+  if (key === "temperature") {
+    return `now ${num(now.temperature_2m)}°C (feels ${num(now.apparent_temperature)}°C) · focus day ${num(ahead.temperature_max)}°C max / ${num(ahead.temperature_min)}°C min`;
+  }
+  if (key === "precipitation") {
+    return `now ${num(now.precipitation)} mm at ${num(now.precipitation_probability, 0)}% · focus day ${num(ahead.precipitation_sum)} mm at ${num(ahead.precipitation_probability_max, 0)}%`;
+  }
+  if (key === "wind") {
+    return `now ${num(now.wind_speed_10m)} km/h, gusts ${num(now.wind_gusts_10m)} km/h · focus day ${num(ahead.wind_speed_max)} km/h, gusts ${num(ahead.wind_gusts_max)} km/h`;
+  }
+  return `now code ${num(now.weather_code)} (${now.weather_description || "no description"}) · focus day code ${num(ahead.weather_code)} (${ahead.weather_description || "no description"})`;
+}
+
 function RiskBar({ label, value, hint }) {
   const [w, setW] = useState(0);
   useEffect(() => {
@@ -32,6 +108,76 @@ function RiskBar({ label, value, hint }) {
     </div>
   );
 }
+function factorRanking(factors = {}) {
+  return FACTOR_ORDER.map((key) => {
+    const value = clamp100(factors[key]);
+    const weight = FACTOR_WEIGHTS[key];
+    return { key, value, weight, contribution: value * weight };
+  }).sort((a, b) => b.contribution - a.contribution);
+}
+
+function peakIndex(daily = []) {
+  let best = 0;
+  daily.forEach((entry, index) => {
+    if ((Number(entry?.score) || 0) > (Number(daily[best]?.score) || 0)) best = index;
+  });
+  return best;
+}
+
+function FactorRow({ factorKey, value, weight, contribution, share, rank, current, focus }) {
+  const meta = FACTOR_META[factorKey] || { label: factorKey, metric: "" };
+  const precise = Math.round(Number(value) * 10) / 10;
+  return (
+    <div className={`risk-factor detailed ${rank === 0 ? "is-top" : ""}`}>
+      <div className="risk-factor-heading">
+        <span>
+          {meta.label}
+          {rank === 0 ? <em className="risk-tag">top driver</em> : null}
+        </span>
+        <strong>{precise}<small>/100</small></strong>
+      </div>
+      <div className="risk-bar"><span style={{ width: `${clamp100(value)}%` }} /></div>
+      <p className="risk-explain">{explainFactor(factorKey, value)}</p>
+      <dl className="risk-ledger">
+        <div><dt>Weight</dt><dd>{Math.round(weight * 100)}%</dd></div>
+        <div><dt>Weighted points</dt><dd>{contribution.toFixed(1)} of 100</dd></div>
+        <div><dt>Share of total</dt><dd>{Math.round(share)}%</dd></div>
+        <div className="wide"><dt>Sample</dt><dd>{readingFor(factorKey, current, focus)}</dd></div>
+      </dl>
+    </div>
+  );
+}
+
+function ScoreSpark({ daily = [], day, onPick }) {
+  const peak = peakIndex(daily);
+  return (
+    <div className="score-spark" role="group" aria-label="Daily risk scores">
+      {daily.map((entry, index) => (
+        <button
+          key={entry.date}
+          type="button"
+          className={`spark-bar ${severityClass(entry.severity)} ${index === day ? "on" : ""} ${index === peak ? "is-peak" : ""}`}
+          style={{ height: `${Math.max(6, clamp100(entry.score))}%` }}
+          onClick={() => onPick(index)}
+          title={`${fmtDate(entry.date)} - ${Math.round(Number(entry.score) || 0)}/100 (${entry.severity})`}
+        >
+          <span>{Math.round(Number(entry.score) || 0)}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ReadingRow({ label, value, detail }) {
+  return (
+    <li>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <em>{detail}</em>
+    </li>
+  );
+}
+
 function Metric({ icon, label, big, sub, title }) {
   return (
     <div className="weather-current-card weather-metric" title={title || label}>
@@ -59,6 +205,28 @@ export default function WeatherDashboard({ weather, weatherList, miniMap, onBack
     return { pos: i >= 0 ? i + 1 : null, total: sorted.length };
   }, [list, weather]);
   const focus = daily[day] || null;
+  const ranking = useMemo(() => factorRanking(factors), [factors]);
+  const weightedTotal = Math.max(1, ranking.reduce((sum, item) => sum + item.contribution, 0));
+  const peak = peakIndex(daily);
+  const peakDay = daily[peak] || null;
+  const topDriver = ranking[0] || null;
+  const verdict = useMemo(() => {
+    if (!weather) return "";
+    const parts = [];
+    parts.push(
+      `${weather.country || "This area"} scores ${Math.round(weather.score || 0)}/100 (${weather.severity})${rank.pos ? `, rank #${rank.pos} of ${rank.total}` : ""}.`
+    );
+    if (topDriver) {
+      const label = FACTOR_META[topDriver.key]?.label || topDriver.key;
+      parts.push(
+        `${label} is the strongest driver after weighting: ${Math.round(topDriver.value)}/100 × ${Math.round(topDriver.weight * 100)}% = ${topDriver.contribution.toFixed(1)} weighted points.`
+      );
+    }
+    parts.push(
+      `Current conditions read ${Math.round(weather.current_score || 0)}/100 while the ${daily.length}-day peak reaches ${Math.round(weather.forecast_score || 0)}/100${peakDay ? ` on ${fmtDate(peakDay.date)}` : ""}.`
+    );
+    return parts.join(" ");
+  }, [weather, topDriver, rank.pos, rank.total, peakDay, daily.length]);
   const share = async () => {
     const text = `${weather?.country} weather: ${weather?.current?.weather_description}, ${weather?.current?.temperature_2m}C, score ${Math.round(weather?.score || 0)}/100.`;
     try { await navigator.clipboard.writeText(text); } catch { /* noop */ }
@@ -111,13 +279,92 @@ export default function WeatherDashboard({ weather, weatherList, miniMap, onBack
       {tab === "overview" && (
         <div className="weather-dashboard-grid brief-grid">
           <div className="weather-section">
-            <div className="weather-section-heading"><div><span className="section-eyebrow">RISK BREAKDOWN</span><h3>Why ranked here</h3></div></div>
-            <div className="risk-factors">
-              <RiskBar label="Temperature" value={factors.temperature} hint="Heat and cold stress." />
-              <RiskBar label="Precipitation" value={factors.precipitation} hint="Rain amount plus probability." />
-              <RiskBar label="Wind" value={factors.wind} hint="Sustained wind and gusts." />
-              <RiskBar label="Severe weather" value={factors.severe_weather} hint="Storm and snow codes." />
+            <div className="weather-section-heading">
+              <div><span className="section-eyebrow">RISK BREAKDOWN</span><h3>Why ranked here</h3></div>
+              <span className={`chip ${severityClass(weather.severity)}`}>{Math.round(weather.score || 0)}/100 · {weather.severity}</span>
             </div>
+            <p className="risk-verdict">{verdict}</p>
+            <div className="risk-factors summary">
+              {ranking.map((item) => (
+                <RiskBar
+                  key={item.key}
+                  label={FACTOR_META[item.key]?.label || item.key}
+                  value={item.value}
+                  hint={`${Math.round(item.weight * 100)}% weight · ${item.contribution.toFixed(1)} weighted pts (${Math.round((item.contribution / weightedTotal) * 100)}% of total)`}
+                />
+              ))}
+            </div>
+            <div className="risk-factors detailed-list">
+              {ranking.map((item, index) => (
+                <FactorRow
+                  key={item.key}
+                  factorKey={item.key}
+                  value={item.value}
+                  weight={item.weight}
+                  contribution={item.contribution}
+                  share={(item.contribution / weightedTotal) * 100}
+                  rank={index}
+                  current={weather.current}
+                  focus={focus}
+                />
+              ))}
+            </div>
+            <div className="risk-ledger-total">
+              <span>{ranking.map((item) => `${Math.round(item.weight * 100)}% × ${Math.round(item.value)}`).join("  +  ")}</span>
+              <strong>{weightedTotal.toFixed(1)} weighted pts → headline {Math.round(weather.score || 0)}/100</strong>
+            </div>
+            <div className="risk-extra">
+              <div className="risk-extra-block">
+                <span className="section-eyebrow">NOW VS FOCUS DAY</span>
+                <ul className="reading-list">
+                  <ReadingRow
+                    label="Condition now"
+                    value={weather.current?.weather_description || "-"}
+                    detail={`${toT(weather.current?.temperature_2m)} · feels ${toT(weather.current?.apparent_temperature)} · code ${num(weather.current?.weather_code)}`}
+                  />
+                  <ReadingRow
+                    label="Rain and wind now"
+                    value={`${num(weather.current?.precipitation)} mm`}
+                    detail={`${num(weather.current?.precipitation_probability, 0)}% chance · wind ${num(weather.current?.wind_speed_10m)} km/h, gusts ${num(weather.current?.wind_gusts_10m)} km/h`}
+                  />
+                  <ReadingRow
+                    label={focus ? fmtDate(focus.date) : "Focus day"}
+                    value={focus?.weather_description || "-"}
+                    detail={focus
+                      ? `${toT(focus.temperature_max)} / ${toT(focus.temperature_min)} · ${num(focus.precipitation_sum)} mm · wind ${num(focus.wind_speed_max)} km/h, gusts ${num(focus.wind_gusts_max)} km/h`
+                      : "no forecast day selected"}
+                  />
+                  <ReadingRow
+                    label="Peak of horizon"
+                    value={peakDay ? fmtDate(peakDay.date) : "-"}
+                    detail={peakDay ? `${Math.round(peakDay.score)}/100 · ${peakDay.severity} · ${peakDay.weather_description}` : "no forecast available"}
+                  />
+                  <ReadingRow
+                    label="Reporting point"
+                    value={weather.timezone || "n/a"}
+                    detail={`${num(weather.latitude)}°, ${num(weather.longitude)}° · source Open-Meteo`}
+                  />
+                </ul>
+              </div>
+              <div className="risk-extra-block">
+                <span className="section-eyebrow">DAILY RISK SHAPE</span>
+                <ScoreSpark daily={daily} day={day} onPick={setDay} />
+                <p className="risk-note">
+                  Bar height tracks the 0-100 daily score. The highlighted bar is the day shown in Day Focus;
+                  the outlined bar is the peak of the horizon.
+                </p>
+              </div>
+            </div>
+            <details className="risk-footnotes">
+              <summary>How this 0-100 score is built</summary>
+              <ul>
+                <li>Temperature 25% · Precipitation 30% · Wind 20% · Severe weather 25%.</li>
+                <li>Precipitation carries the heaviest weight because rain volume drives flooding and mobility disruption.</li>
+                <li>Each factor is scored 0-100, multiplied by its weight, then summed into the headline score.</li>
+                <li>Now values come from the Open-Meteo sample point for this area; the 7-day outlook defines the forecast peak and the daily shape above.</li>
+                <li>City samples on the mini map are separate Open-Meteo calls for the capital and largest metros, so a capital can read differently from the country sample.</li>
+              </ul>
+            </details>
           </div>
           <div className="brief-side">
             {miniMap}
