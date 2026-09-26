@@ -1,19 +1,10 @@
 import { useEffect, useState } from "react";
 
-const PAGE_SIZE = 20;
+import EventCard from "../EventCard";
 
-const formatCategory = (category) =>
-  category ? category.replaceAll("_", " ") : "Uncategorized";
+const PAGE_SIZE = 18;
 
-const formatTime = (eventTime) =>
-  eventTime
-    ? new Date(eventTime).toLocaleString(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      })
-    : "Unknown time";
-
-export default function EventHistoryTable({ events, onSelect }) {
+export default function EventHistoryGrid({ events, onSelect }) {
   const [page, setPage] = useState(1);
   const pageCount = Math.max(1, Math.ceil(events.length / PAGE_SIZE));
 
@@ -39,34 +30,15 @@ export default function EventHistoryTable({ events, onSelect }) {
 
   return (
     <div>
-      <div className="event-history-table-wrap">
-        <table className="event-history-table">
-          <caption className="sr-only">Historical events ordered newest first</caption>
-          <thead>
-            <tr>
-              <th scope="col">Event</th>
-              <th scope="col">Category</th>
-              <th scope="col">Location</th>
-              <th scope="col">Importance</th>
-              <th scope="col">Event time</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pageEvents.map((event) => (
-              <tr key={event.id}>
-                <td>
-                  <button type="button" onClick={() => onSelect(event)}>
-                    {event.title || "Untitled event"}
-                  </button>
-                </td>
-                <td>{formatCategory(event.category)}</td>
-                <td>{event.country || "Global"}</td>
-                <td><strong>{event.importance ?? "-"}/10</strong></td>
-                <td>{formatTime(event.event_time)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="event-history-grid">
+        {pageEvents.map((event) => (
+          <EventCard
+            key={event.id}
+            event={event}
+            variant="grid"
+            onSelect={onSelect}
+          />
+        ))}
       </div>
 
       <nav className="event-pagination" aria-label="Event history pages">

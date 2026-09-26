@@ -31,6 +31,7 @@ export const formatCategory = (category) =>
 
 export default function EventCard({ event, variant = "grid", onSelect }) {
   const [commentsOpen, setCommentsOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
   const { syncEvent } = useEventInteractions();
 
@@ -48,6 +49,27 @@ export default function EventCard({ event, variant = "grid", onSelect }) {
   const severity = getSeverity(event.importance);
   const showImage = Boolean(event.image_url) && !imageFailed;
   const eventTime = formatRelativeTime(event.event_time);
+
+  const fullEventTime = event.event_time
+    ? new Date(event.event_time).toLocaleString(undefined, {
+        dateStyle: "full",
+        timeStyle: "short",
+      })
+    : "Unknown time";
+
+  const confidenceValue = Number(event.confidence);
+  const confidenceLabel = Number.isFinite(confidenceValue)
+    ? `${Math.round(
+        confidenceValue > 1 ? confidenceValue : confidenceValue * 100
+      )}%`
+    : "—";
+
+  const latitude = Number(event.latitude);
+  const longitude = Number(event.longitude);
+  const coordinatesLabel =
+    Number.isFinite(latitude) && Number.isFinite(longitude)
+      ? `${latitude.toFixed(2)}, ${longitude.toFixed(2)}`
+      : null;
 
   const openDetails = () => onSelect?.(event);
 
@@ -115,6 +137,63 @@ export default function EventCard({ event, variant = "grid", onSelect }) {
           </span>
         </span>
       </button>
+
+      <div
+        className="event-card-details"
+        onClick={stopInteraction}
+        onKeyDown={stopInteraction}
+      >
+        <button
+          type="button"
+          className="event-card-details-toggle"
+          aria-expanded={detailsOpen}
+          onClick={() => setDetailsOpen((open) => !open)}
+        >
+          <span>
+            {detailsOpen ? "Hide event details" : "Show event details"}
+          </span>
+          <span aria-hidden="true">{detailsOpen ? "▴" : "▾"}</span>
+        </button>
+
+        {detailsOpen && (
+          <div className="event-card-details-panel">
+            <p className="event-card-description">
+              {event.description ||
+                event.summary ||
+                "No detailed description available for this event yet."}
+            </p>
+
+            <dl className="event-card-facts">
+              <div>
+                <dt>Confidence</dt>
+                <dd>{confidenceLabel}</dd>
+              </div>
+              <div>
+                <dt>Importance</dt>
+                <dd>{event.importance ?? "—"} / 10</dd>
+              </div>
+              <div>
+                <dt>Category</dt>
+                <dd>{formatCategory(event.category)}</dd>
+              </div>
+              <div>
+                <dt>Location</dt>
+                <dd>{event.country || "Global"}</dd>
+              </div>
+              {coordinatesLabel && (
+                <div>
+                  <dt>Coordinates</dt>
+                  <dd>{coordinatesLabel}</dd>
+                </div>
+              )}
+              <div>
+                <dt>Event time</dt>
+                <dd>{fullEventTime}</dd>
+              </div>
+            </dl>
+          </div>
+        )}
+      </div>
 
       <footer
         className="event-card-footer"

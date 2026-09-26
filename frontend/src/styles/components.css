@@ -683,6 +683,84 @@
 }
 
 /* =========================================================
+   EVENT CARD DETAILS (expandable description)
+   ========================================================= */
+
+.event-card-details {
+  padding: 0 16px 12px;
+  border-top: 1px solid rgba(80, 145, 185, 0.13);
+}
+
+.event-card-details-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 0 3px;
+  border: 0;
+  background: transparent;
+  color: #58c9ff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.event-card-details-toggle:hover {
+  color: #a5e2ff;
+}
+
+.event-card-details-toggle:focus-visible {
+  outline: 2px solid rgba(56, 189, 248, 0.72);
+  outline-offset: 2px;
+}
+
+.event-card-details-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 8px;
+}
+
+.event-card-description {
+  margin: 0;
+  color: #9db8cc;
+  font-size: 12.5px;
+  line-height: 1.65;
+  white-space: pre-line;
+}
+
+.event-card-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.event-card-facts > div {
+  padding: 8px 10px;
+  border: 1px solid rgba(80, 145, 185, 0.14);
+  border-radius: 8px;
+  background: rgba(5, 19, 30, 0.66);
+}
+
+.event-card-facts dt {
+  color: #5f7b90;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.event-card-facts dd {
+  margin: 3px 0 0;
+  color: #cfe3f2;
+  font-size: 12px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* =========================================================
    EVENT INTERACTIONS (likes + comments)
    ========================================================= */
 

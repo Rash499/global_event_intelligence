@@ -168,6 +168,32 @@
   padding-bottom: 40px;
 }
 
+/* =========================================================
+   EVENT HISTORY GRID (3 cards per row)
+   ========================================================= */
+
+.event-history-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.event-history-grid .event-card {
+  height: 100%;
+}
+
+@media (max-width: 1200px) {
+  .event-history-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .event-history-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .event-history-table-wrap {
   overflow-x: auto;
 
