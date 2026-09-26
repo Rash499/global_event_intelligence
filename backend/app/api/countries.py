@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Query
 
 from ..database.db import get_connection
+from ..database.queries import select_events
 
 
 router = APIRouter(prefix="/api")
@@ -10,24 +11,20 @@ router = APIRouter(prefix="/api")
 def country(
     country_code: str,
     limit: int = Query(200, ge=1, le=500),
+    user_id: str | None = Query(None, max_length=120),
 ):
     conn = get_connection()
 
     try:
         code = country_code.upper()
-        events = [
-            dict(row)
-            for row in conn.execute(
-                """
-                SELECT *
-                FROM events
-                WHERE country_code = ?
-                ORDER BY event_time DESC
-                LIMIT ?
-                """,
-                (code, limit),
-            ).fetchall()
-        ]
+        events = select_events(
+            conn,
+            where_clause="e.country_code = ?",
+            params=(code,),
+            order_clause="e.event_time DESC",
+            limit=limit,
+            user_id=user_id,
+        )
 
         return {
             "country_code": code,
@@ -43,24 +40,20 @@ def country(
 def country_intelligence(
     country_code: str,
     limit: int = Query(500, ge=1, le=500),
+    user_id: str | None = Query(None, max_length=120),
 ):
     conn = get_connection()
 
     try:
         code = country_code.upper()
-        events = [
-            dict(row)
-            for row in conn.execute(
-                """
-                SELECT *
-                FROM events
-                WHERE country_code = ?
-                ORDER BY event_time DESC
-                LIMIT ?
-                """,
-                (code, limit),
-            ).fetchall()
-        ]
+        events = select_events(
+            conn,
+            where_clause="e.country_code = ?",
+            params=(code,),
+            order_clause="e.event_time DESC",
+            limit=limit,
+            user_id=user_id,
+        )
 
         categories = {}
         for event in events:
