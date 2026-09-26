@@ -1,3 +1,4 @@
+import asyncio
 from html.parser import HTMLParser
 from urllib.parse import urljoin, urlparse
 
@@ -187,6 +188,49 @@ async def event(
         conn.commit()
         return result
 
+    finally:
+        conn.close()
+
+
+@router.get("/events/{event_id}/image")
+async def event_image(event_id: int):
+    conn = get_connection()
+
+    try:
+        sources = conn.execute(
+            """
+            SELECT a.url, a.image_url
+            FROM event_articles ea
+            JOIN articles a ON a.id = ea.article_id
+            WHERE ea.event_id = ?
+            ORDER BY a.id
+            LIMIT 5
+            """,
+            (event_id,),
+        ).fetchall()
+
+        if not sources:
+            raise HTTPException(status_code=404, detail="Event image not found")
+
+        for source in sources:
+            if source["image_url"] and source["image_url"].strip():
+                return {"image_url": source["image_url"]}
+
+        discovered_images = await asyncio.gather(
+            *(discover_image_url(source["url"]) for source in sources)
+        )
+        image_url = next((url for url in discovered_images if url), None)
+
+        if not image_url:
+            raise HTTPException(status_code=404, detail="Event image not found")
+
+        source_url = sources[discovered_images.index(image_url)]["url"]
+        conn.execute(
+            "UPDATE articles SET image_url = ? WHERE url = ?",
+            (image_url, source_url),
+        )
+        conn.commit()
+        return {"image_url": image_url}
     finally:
         conn.close()
 
