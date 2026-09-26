@@ -2,9 +2,10 @@ from html.parser import HTMLParser
 from urllib.parse import urljoin, urlparse
 
 import httpx
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
 from ..database.db import get_connection
+from ..database.queries import select_event, select_events
 
 
 router = APIRouter(prefix="/api")
@@ -65,100 +66,86 @@ def events(
     country_code: str | None = None,
     min_importance: int = Query(1, ge=1, le=10),
     limit: int = Query(50, ge=1, le=200),
+    user_id: str | None = Query(None, max_length=120),
 ):
     conn = get_connection()
 
     try:
-        sql = """
-            SELECT *
-            FROM events
-            WHERE importance >= ?
-        """
-
+        conditions = ["e.importance >= ?"]
         params = [min_importance]
 
         if category:
-            sql += " AND category = ?"
+            conditions.append("e.category = ?")
             params.append(category)
 
         if country_code:
-            sql += " AND country_code = ?"
+            conditions.append("e.country_code = ?")
             params.append(country_code)
 
-        sql += """
-            ORDER BY event_time DESC
-            LIMIT ?
-        """
-
-        params.append(limit)
-
-        return [
-            dict(row)
-            for row in conn.execute(sql, params).fetchall()
-        ]
+        return select_events(
+            conn,
+            where_clause=" AND ".join(conditions),
+            params=params,
+            order_clause="e.event_time DESC",
+            limit=limit,
+            user_id=user_id,
+        )
 
     finally:
         conn.close()
 
 
 @router.get("/events/latest")
-def latest_events(limit: int = Query(300, ge=1, le=500)):
+def latest_events(
+    limit: int = Query(300, ge=1, le=500),
+    user_id: str | None = Query(None, max_length=120),
+):
     conn = get_connection()
 
     try:
-        return [
-            dict(row)
-            for row in conn.execute(
-                """
-                SELECT *
-                FROM events
-                ORDER BY event_time DESC
-                LIMIT ?
-                """,
-                (limit,),
-            ).fetchall()
-        ]
+        return select_events(
+            conn,
+            order_clause="e.event_time DESC",
+            limit=limit,
+            user_id=user_id,
+        )
 
     finally:
         conn.close()
 
 
 @router.get("/events/history")
-def event_history(limit: int = Query(1000, ge=1, le=1000)):
+def event_history(
+    limit: int = Query(1000, ge=1, le=1000),
+    user_id: str | None = Query(None, max_length=120),
+):
     conn = get_connection()
 
     try:
-        return [
-            dict(row)
-            for row in conn.execute(
-                """
-                SELECT *
-                FROM events
-                ORDER BY event_time DESC, id DESC
-                LIMIT ?
-                """,
-                (limit,),
-            ).fetchall()
-        ]
+        return select_events(
+            conn,
+            order_clause="e.event_time DESC, e.id DESC",
+            limit=limit,
+            user_id=user_id,
+        )
 
     finally:
         conn.close()
 
 
 @router.get("/events/{event_id}")
-async def event(event_id: int):
+async def event(
+    event_id: int,
+    user_id: str | None = Query(None, max_length=120),
+):
     conn = get_connection()
 
     try:
-        row = conn.execute(
-            "SELECT * FROM events WHERE id=?",
-            (event_id,),
-        ).fetchone()
+        result = select_event(conn, event_id, user_id=user_id)
 
-        if not row:
-            return {"error": "Event not found"}
+        if not result:
+            raise HTTPException(status_code=404, detail="Event not found")
 
-        result = dict(row)
         result["sources"] = [
             dict(source)
             for source in conn.execute(
