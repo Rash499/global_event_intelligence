@@ -119,6 +119,11 @@ Authentication endpoints:
 Passwords are stored as scrypt hashes; session tokens are stored as hashes.
 Email verification and password recovery are not currently included.
 
+Events are retained for seven days based on their event time. Expired events
+and their likes, comments, and article links are purged when the backend starts
+and then every minute while it is running. The event dashboard refreshes its
+feed every minute so removed events disappear automatically.
+
 ## 4. Seed demo data
 
 The backend has demo events so the UI works immediately.
