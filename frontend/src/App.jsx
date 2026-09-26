@@ -17,6 +17,7 @@ import {
   getGlobalWeather,
   runIngestion,
 } from "./services/api.jsx";
+import { getLocalUserId } from "./services/eventIdentity.jsx";
 import { loadWorldGeoJSON } from "./services/worldGeoJson.jsx";
 
 import "./styles/globals.css";
@@ -116,7 +117,7 @@ export default function App() {
   const loadEvents = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await getEventHistory(1000);
+      const data = await getEventHistory(1000, getLocalUserId());
       setEvents(data);
       setStatus("");
     } catch (error) {
