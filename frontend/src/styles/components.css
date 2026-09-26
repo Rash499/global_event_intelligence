@@ -516,6 +516,410 @@
 /* =========================================================
    EVENT DETAIL
    ========================================================= */
+.event-card {
+  overflow: hidden;
+  flex-direction: column;
+  border: 1px solid rgba(80, 145, 185, 0.15);
+  border-radius: 14px;
+  background: linear-gradient(150deg, rgba(11, 29, 44, 0.95), rgba(4, 14, 24, 0.95));
+}
+
+.event-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(56, 189, 248, 0.38);
+  box-shadow: 0 14px 36px rgba(2, 10, 19, 0.48);
+}
+
+.event-card-select {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.event-card-select:focus-visible {
+  outline: 2px solid rgba(56, 189, 248, 0.72);
+  outline-offset: 2px;
+}
+
+.event-card-media {
+  position: relative;
+  display: block;
+  min-height: 88px;
+  background: rgba(3, 12, 21, 0.72);
+}
+
+.event-card-media img {
+  display: block;
+  width: 100%;
+  height: 148px;
+  object-fit: cover;
+}
+
+.event-card-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 88px;
+  padding: 16px 44px 16px 18px;
+  background: radial-gradient(circle at 88% 18%, rgba(56, 189, 248, 0.16), transparent 42%), rgba(4, 15, 26, 0.5);
+  color: #7fa5bd;
+}
+
+.event-card-placeholder-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border: 1px solid rgba(127, 165, 189, 0.28);
+  border-radius: 12px;
+  background: rgba(7, 23, 36, 0.7);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.event-card-placeholder-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.event-card-media-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+  padding: 5px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(3, 12, 21, 0.78);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.event-card-media-badge small {
+  font-size: 10px;
+  font-weight: 700;
+  opacity: 0.75;
+}
+
+.event-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px 12px;
+}
+
+.event-card-badges {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.event-card-category {
+  color: #7fa5bd;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.event-card-title {
+  display: block;
+  color: #eef7ff;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.event-card-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  color: #647f93;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.event-card-summary {
+  display: block;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  color: #8ea8bd;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.event-card-time {
+  flex-shrink: 0;
+  color: #4d7189;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+
+.event-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px 12px;
+}
+
+/* =========================================================
+   EVENT INTERACTIONS (likes + comments)
+   ========================================================= */
+
+.interaction-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.interaction-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 11px;
+  border: 1px solid rgba(80, 145, 185, 0.24);
+  border-radius: 999px;
+  background: rgba(7, 23, 36, 0.72);
+  color: #9db8cc;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  transition: border-color 0.18s ease, color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+
+.interaction-button:hover:not(:disabled) {
+  border-color: rgba(56, 189, 248, 0.55);
+  color: #dff3ff;
+  transform: translateY(-1px);
+}
+
+.interaction-button:disabled {
+  opacity: 0.72;
+}
+
+.interaction-button.active {
+  border-color: rgba(56, 189, 248, 0.68);
+  background: rgba(14, 72, 104, 0.58);
+  color: #7fdcff;
+  box-shadow: 0 0 18px rgba(56, 189, 248, 0.18);
+}
+
+.interaction-icon {
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.interaction-count {
+  min-width: 14px;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+}
+
+.event-comments {
+  padding: 4px 14px 14px;
+  border-top: 1px solid rgba(80, 145, 185, 0.13);
+}
+
+.comment-composer {
+  display: grid;
+  grid-template-columns: minmax(96px, 130px) minmax(0, 1fr) auto;
+  gap: 8px;
+  margin: 12px 0 10px;
+}
+
+.comment-author-input,
+.comment-input {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(80, 145, 185, 0.24);
+  border-radius: 9px;
+  background: rgba(4, 17, 28, 0.88);
+  color: #dcecff;
+  font-size: 12.5px;
+}
+
+.comment-author-input::placeholder,
+.comment-input::placeholder {
+  color: #5f7b90;
+}
+
+.comment-author-input:focus-visible,
+.comment-input:focus-visible,
+.comment-submit:focus-visible,
+.comment-delete:focus-visible,
+.interaction-button:focus-visible {
+  outline: 2px solid rgba(56, 189, 248, 0.72);
+  outline-offset: 1px;
+}
+
+.comment-submit {
+  padding: 9px 14px;
+  border: 1px solid rgba(56, 189, 248, 0.42);
+  border-radius: 9px;
+  background: linear-gradient(135deg, #0b6da1, #075078);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.comment-submit:disabled {
+  opacity: 0.55;
+}
+
+.comment-status {
+  margin: 8px 0;
+  color: #718ba0;
+  font-size: 12px;
+}
+
+.comment-status-error {
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 113, 136, 0.3);
+  border-radius: 8px;
+  background: rgba(77, 18, 30, 0.38);
+  color: #ffb3c0;
+}
+
+.comment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.comment-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid rgba(80, 145, 185, 0.15);
+  border-radius: 10px;
+  background: rgba(5, 20, 31, 0.72);
+}
+
+.comment-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: rgba(56, 189, 248, 0.18);
+  color: #7fdcff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.comment-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.comment-meta {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 5px;
+  color: #718ba0;
+  font-size: 11px;
+}
+
+.comment-meta strong {
+  color: #cfe9fb;
+  font-size: 12px;
+}
+
+.comment-meta em {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(86, 214, 161, 0.14);
+  color: #72dcb1;
+  font-style: normal;
+  font-weight: 800;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.comment-copy p {
+  margin: 0;
+  color: #bcd7eb;
+  font-size: 12.5px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.comment-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #647f93;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.comment-delete:hover {
+  border-color: rgba(255, 113, 136, 0.35);
+  background: rgba(77, 18, 30, 0.35);
+  color: #ff9fad;
+}
+
+.detail-engagement {
+  margin-top: 20px;
+  padding: 14px;
+  border: 1px solid rgba(80, 145, 185, 0.16);
+  border-radius: 12px;
+  background: rgba(4, 17, 28, 0.62);
+}
+
+.detail-engagement .event-comments {
+  padding: 0;
+  border-top: 0;
+}
+
+.detail-engagement .interaction-bar {
+  margin-bottom: 6px;
+}
+
+@media (max-width: 640px) {
+  .comment-composer {
+    grid-template-columns: 1fr;
+  }
+}
+
 
 .detail-panel {
   max-width: 1000px;
