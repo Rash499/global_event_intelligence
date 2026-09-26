@@ -159,6 +159,19 @@ function IntelligenceWorkspace({ user, onLogout }) {
     if (mode === "weather") loadWeather();
   }, [mode, loadWeather]);
 
+  useEffect(() => {
+    const refreshEvents = async () => {
+      try {
+        setEvents(await getEventHistory(1000));
+      } catch (error) {
+        console.error("Failed to refresh the event feed:", error);
+      }
+    };
+
+    const refreshTimer = window.setInterval(refreshEvents, 60_000);
+    return () => window.clearInterval(refreshTimer);
+  }, []);
+
   const collectEvents = useCallback(async (automatic = false) => {
     setCollecting(true);
     setStatus(
