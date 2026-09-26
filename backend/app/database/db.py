@@ -12,6 +12,50 @@ def get_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
+
+def purge_expired_events() -> int:
+    conn = get_connection()
+
+    try:
+        expired_ids = [
+            row["id"]
+            for row in conn.execute(
+                """
+                SELECT id
+                FROM events
+                WHERE julianday(
+                    CASE
+                        WHEN event_time IS NULL
+                          OR TRIM(event_time) = ''
+                          OR julianday(event_time) IS NULL
+                        THEN created_at
+                        ELSE event_time
+                    END
+                ) < julianday('now', '-7 days')
+                """
+            ).fetchall()
+        ]
+
+        if not expired_ids:
+            return 0
+
+        placeholders = ",".join("?" for _ in expired_ids)
+        for table in ("event_articles", "event_likes", "event_comments"):
+            conn.execute(
+                f"DELETE FROM {table} WHERE event_id IN ({placeholders})",
+                expired_ids,
+            )
+
+        conn.execute(
+            f"DELETE FROM events WHERE id IN ({placeholders})",
+            expired_ids,
+        )
+        conn.commit()
+        return len(expired_ids)
+    finally:
+        conn.close()
+
+
 def init_db():
     conn = get_connection()
     conn.executescript("""
