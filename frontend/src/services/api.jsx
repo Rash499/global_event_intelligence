@@ -61,7 +61,7 @@ export const getEventImage = async (eventId) => {
 };
 
 export const getGlobalStatistics = async () => {
-  const response = await api.get("/statistics/global");
+  const response = await api.get("/statistics/overview");
   return response.data;
 };
 
