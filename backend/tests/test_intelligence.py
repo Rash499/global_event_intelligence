@@ -1,10 +1,16 @@
 from datetime import datetime, timedelta, timezone
 
+from fastapi.testclient import TestClient
+
 from app.intelligence.classification import normalize_category, classify_article
 from app.intelligence.confidence import score_event_confidence
 from app.intelligence.deduplication import is_duplicate
 from app.intelligence.importance import score_event_importance
+from app.main import app
 from app.intelligence.verification import determine_corroboration_level
+
+
+client = TestClient(app)
 
 
 def test_same_url_is_duplicate():
@@ -50,3 +56,16 @@ def test_multiple_independent_sources_have_stronger_corroboration():
     assert determine_corroboration_level(1) == "single"
     assert determine_corroboration_level(2) == "corroborated"
     assert determine_corroboration_level(5) == "strong"
+
+
+def test_statistics_overview_includes_timeline_and_category_breakdown():
+    response = client.get("/api/statistics/overview")
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert "total_events" in payload
+    assert "categories" in payload
+    assert "countries_by_event_count" in payload
+    assert "timeline" in payload
+    assert isinstance(payload["timeline"], list)
