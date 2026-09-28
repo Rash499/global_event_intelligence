@@ -30,6 +30,7 @@ import "./styles/auth.css";
 import "./styles/alerts.css";
 import "./styles/globe.css";
 import "./styles/dashboard/country.css";
+import "./styles/dashboard/country-map.css";
 import "./styles/dashboard/global-overview.css";
 import "./styles/dashboard/history.css";
 import "./styles/dashboard/filters.css";
