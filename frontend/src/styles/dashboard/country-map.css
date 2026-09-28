@@ -1,0 +1,356 @@
+/* =========================================================
+   COUNTRY EVENT MAP
+   (country dashboard mini map with event locations)
+   ========================================================= */
+
+.country-map-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+
+  width: 100%;
+
+  padding: 16px;
+
+  border: 1px solid rgba(80, 145, 185, 0.16);
+  border-radius: 14px;
+
+  background:
+    linear-gradient(
+      158deg,
+      rgba(7, 25, 40, 0.88),
+      rgba(3, 12, 21, 0.92)
+    );
+
+  box-shadow:
+    inset 0 1px 0 rgba(120, 190, 225, 0.06);
+}
+
+.country-map-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.country-map-head h3 {
+  margin: 4px 0 0;
+
+  color: #dcecff;
+
+  font-size: 17px;
+  letter-spacing: -0.01em;
+}
+
+.country-map-controls {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 6px;
+}
+
+.country-map-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  min-width: 30px;
+  height: 30px;
+
+  padding: 0 9px;
+
+  border: 1px solid rgba(80, 145, 185, 0.25);
+  border-radius: 8px;
+
+  background:
+    rgba(7, 22, 34, 0.8);
+
+  color: #cfe7f7;
+
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+
+  cursor: pointer;
+
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    color 0.18s ease;
+}
+
+.country-map-btn:hover:not(:disabled) {
+  border-color:
+    rgba(56, 189, 248, 0.5);
+
+  background:
+    rgba(10, 48, 70, 0.6);
+
+  color: #8edcff;
+}
+
+.country-map-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.country-map-btn:focus-visible {
+  outline: 2px solid rgba(56, 189, 248, 0.72);
+  outline-offset: 2px;
+}
+
+.country-map-btn-wide {
+  min-width: 0;
+  font-size: 11px;
+}
+
+.country-map-zoom-label {
+  min-width: 34px;
+
+  color: #7e96aa;
+
+  font-size: 10px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.country-map-canvas {
+  position: relative;
+
+  overflow: hidden;
+
+  border: 1px solid rgba(80, 145, 185, 0.16);
+  border-radius: 12px;
+
+  background:
+    radial-gradient(
+      circle at 26% 16%,
+      rgba(24, 92, 128, 0.45),
+      rgba(3, 13, 23, 0.96) 62%
+    );
+}
+
+.country-map-svg {
+  display: block;
+
+  width: 100%;
+  height: auto;
+}
+
+.country-map-grid-layer {
+  pointer-events: none;
+}
+
+.country-map-grid {
+  stroke: rgba(120, 170, 200, 0.13);
+  stroke-width: 1;
+}
+
+.country-map-grid-label {
+  fill: rgba(126, 150, 170, 0.72);
+
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.country-map-outline {
+  stroke: rgba(96, 214, 186, 0.75);
+  stroke-width: 1.4;
+
+  filter: drop-shadow(0 0 12px rgba(56, 189, 248, 0.22));
+}
+
+/* Dashed sampling box used when the outline could not be matched. */
+.country-map-box {
+  fill: rgba(56, 189, 248, 0.05);
+  stroke: rgba(126, 170, 200, 0.45);
+  stroke-width: 1;
+  stroke-dasharray: 6 5;
+}
+
+.country-map-pin {
+  cursor: pointer;
+}
+
+.country-map-pin-halo {
+  opacity: 0.26;
+
+  transition: opacity 0.18s ease;
+}
+
+.country-map-pin-core {
+  stroke: #04101d;
+  stroke-width: 1.2;
+}
+
+.country-map-pin.is-hover .country-map-pin-halo {
+  opacity: 0.5;
+}
+
+/* The event opened in the detail panel keeps a brighter halo. */
+.country-map-pin.is-active .country-map-pin-halo {
+  opacity: 0.55;
+}
+
+.country-map-pin.is-off-view {
+  opacity: 0.45;
+}
+
+.country-map-pin:focus-visible {
+  outline: none;
+}
+
+.country-map-pin:focus-visible .country-map-pin-core {
+  stroke: #ffffff;
+  stroke-width: 2;
+}
+
+.country-map-pin-pulse {
+  fill: none;
+
+  stroke: currentColor;
+  stroke-width: 1.8;
+
+  opacity: 0.75;
+
+  animation: countryMapPulse 2.2s ease-out infinite;
+}
+
+@keyframes countryMapPulse {
+  0% {
+    r: 7;
+    opacity: 0.75;
+  }
+
+  70% {
+    r: 18;
+    opacity: 0;
+  }
+
+  100% {
+    r: 18;
+    opacity: 0;
+  }
+}
+
+.country-map-tip {
+  pointer-events: none;
+}
+
+.country-map-tip rect {
+  fill: rgba(3, 12, 21, 0.94);
+  stroke: rgba(80, 145, 185, 0.4);
+}
+
+.country-map-tip text {
+  fill: #eaf6ff;
+
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.country-map-tip .country-map-tip-meta {
+  fill: #89a6bb;
+
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.country-map-overlay {
+  position: absolute;
+  inset: auto 10px 10px auto;
+
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+
+  pointer-events: none;
+}
+
+.country-map-chip {
+  padding: 4px 9px;
+
+  border: 1px solid rgba(80, 145, 185, 0.28);
+  border-radius: 999px;
+
+  background:
+    rgba(3, 12, 22, 0.82);
+
+  color: #9fc0d6;
+
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.country-map-chip.is-warn {
+  border-color:
+    rgba(255, 180, 90, 0.45);
+
+  color: #ffc46b;
+}
+
+.country-map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+
+  color: #7e96aa;
+
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.country-map-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.country-map-legend i {
+  width: 8px;
+  height: 8px;
+
+  border-radius: 50%;
+
+  box-shadow: 0 0 8px currentColor;
+}
+
+.country-map-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+
+  color: #6e879c;
+
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.country-map-empty {
+  margin: 0;
+  padding: 26px 16px;
+
+  border: 1px dashed rgba(80, 145, 185, 0.25);
+  border-radius: 12px;
+
+  color: #7893a7;
+
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+@media (max-width: 700px) {
+  .country-map-head {
+    flex-direction: column;
+  }
+}
+
