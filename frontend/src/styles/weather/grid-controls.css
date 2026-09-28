@@ -1,0 +1,19 @@
+.weather-metric { position: relative; overflow: hidden; transition: transform .15s ease; }
+.weather-metric:hover { transform: translateY(-2px); }
+.metric-icon { position: absolute; right: 10px; top: 8px; font-size: 22px; opacity: .35; }
+.day-focus h3 { margin: 4px 0 8px; }
+.day-focus-main { color: #dceeff; font-weight: 700; margin: 0 0 6px; }
+.day-stepper { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; color: #8ea7bb; font-size: 12px; }
+.day-stepper button { border: 1px solid rgba(80,145,185,.25); background: transparent; color: #cfe7f7; border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+.day-stepper button:disabled { opacity: .35; cursor: default; }
+.forecast-list.is-clickable .forecast-card.as-btn { cursor: pointer; text-align: left; color: inherit; font: inherit; }
+.forecast-card.as-btn.on { border-color: rgba(56,189,248,.55); background: rgba(12,45,65,.85); }
+.compare-list { display: grid; gap: 8px; }
+.compare-row { display: grid; grid-template-columns: 40px 1fr auto; gap: 10px; align-items: center; width: 100%; text-align: left; border: 1px solid rgba(80,145,185,.15); background: rgba(7,22,34,.7); border-radius: 10px; padding: 9px; color: inherit; cursor: pointer; }
+.compare-row.on { border-color: rgba(56,189,248,.55); }
+.compare-copy strong, .compare-copy small { display: block; }
+.compare-copy strong { color: #dceeff; font-size: 12px; } .compare-copy small { color: #718a9f; font-size: 10px; }
+.weather-score.sm { width: 32px; height: 32px; }
+.risk-hint { display: block; margin-top: 6px; color: #637e93; font-size: 10px; }
+.risk-bar span { transition: width .6s ease; }
+.mini-map-card { border: 1px solid rgba(80,145,185,.2); border-radius: 13px; overflow: hidden; background: linear-gradient(160deg, rgba(8,24,38,.96), rgba(3,12,22,.96)); transition: box-shadow .2s ease, transform .2s ease; }
