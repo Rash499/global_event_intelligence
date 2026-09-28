@@ -1,0 +1,115 @@
+/* =========================================================
+   STATS
+   ========================================================= */
+
+.stats {
+  display: grid;
+  grid-template-columns:
+    repeat(4, minmax(0, 1fr));
+
+  gap: 12px;
+
+  margin-bottom: 16px;
+}
+
+.stat-card {
+  position: relative;
+  overflow: hidden;
+
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+
+  padding: 18px;
+
+  border: 1px solid rgba(80, 145, 185, 0.16);
+  border-radius: 12px;
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(10, 29, 44, 0.92),
+      rgba(4, 15, 26, 0.92)
+    );
+
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.stat-card::after {
+  position: absolute;
+  right: -28px;
+  bottom: -42px;
+
+  width: 110px;
+  height: 110px;
+
+  border: 1px solid currentColor;
+  border-radius: 50%;
+
+  content: "";
+  opacity: 0.08;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(56, 189, 248, 0.36);
+}
+
+.stat-card-events { color: #49c8f6; }
+.stat-card-major { color: #ff7188; }
+.stat-card-countries { color: #72dcb1; }
+.stat-card-categories { color: #b79cff; }
+
+.stat-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.stat-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 25px;
+  height: 25px;
+  border: 1px solid currentColor;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.stat-kicker {
+  color: #607b90;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.stat-card strong {
+  font-size: 28px;
+  color: #f0f8ff;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-card span {
+  color: #7691a7;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.stat-card > span:not(.stat-icon):not(.stat-kicker) {
+  color: #a6c0d2;
+}
+
+.stat-card small {
+  margin-top: 3px;
+  color: #536e82;
+  font-size: 10px;
+}
+
+

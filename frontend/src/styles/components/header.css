@@ -1,0 +1,110 @@
+
+/* =========================================================
+   HEADER
+   ========================================================= */
+
+.collect-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+
+  min-width: 157px;
+
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 10px;
+
+  padding: 12px 20px;
+
+  background:
+    linear-gradient(
+      135deg,
+      #0b6da1,
+      #075078
+    );
+
+  color: #ffffff;
+
+  font-weight: 700;
+  font-size: 14px;
+
+  box-shadow:
+    0 8px 25px rgba(0, 120, 190, 0.18);
+
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.collect-button:hover {
+  transform: translateY(-2px);
+
+  border-color: rgba(56, 189, 248, 0.7);
+
+  box-shadow:
+    0 12px 30px rgba(0, 150, 220, 0.25);
+}
+
+.collect-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 50%;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.collect-button:disabled .collect-icon {
+  animation: collect-spin 1s linear infinite;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.account-label {
+  display: flex;
+  min-width: 120px;
+  flex-direction: column;
+  gap: 3px;
+  padding-right: 8px;
+  color: #d6e8e8;
+}
+
+.account-label strong {
+  font-size: 12px;
+}
+
+.account-label span {
+  color: #68899b;
+  font-size: 10px;
+}
+
+.logout-button {
+  padding: 10px 12px;
+  border: 1px solid rgba(80, 145, 185, 0.22);
+  border-radius: 8px;
+  background: rgba(7, 23, 36, 0.75);
+  color: #99b6c8;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.logout-button:hover {
+  border-color: rgba(56, 189, 248, 0.45);
+  color: #e4f6ff;
+}
+
+@keyframes collect-spin {
+  to { transform: rotate(360deg); }
+}
+
+
