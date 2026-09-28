@@ -1,0 +1,80 @@
+.weather-list {
+  display: grid;
+  gap: 7px;
+  max-height: 590px;
+  overflow-y: auto;
+  padding-right: 3px;
+}
+
+.weather-row {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: 1px solid rgba(80, 145, 185, 0.13);
+  border-radius: 10px;
+  padding: 9px;
+  background: rgba(7, 22, 34, 0.75);
+  color: inherit;
+  text-align: left;
+}
+
+.weather-row:hover {
+  border-color: rgba(56, 189, 248, 0.38);
+  background: rgba(12, 39, 57, 0.9);
+}
+
+.weather-score {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.weather-score.extreme,
+.weather-severity.extreme,
+.forecast-risk.extreme,
+.weather-dashboard-score.extreme { color: #ff6b82; }
+.weather-score.high,
+.weather-severity.high,
+.forecast-risk.high,
+.weather-dashboard-score.high { color: #ffae63; }
+.weather-score.moderate,
+.weather-severity.moderate,
+.forecast-risk.moderate,
+.weather-dashboard-score.moderate { color: #ffd166; }
+.weather-score.low,
+.weather-severity.low,
+.forecast-risk.low,
+.weather-dashboard-score.low { color: #6fe0b3; }
+.weather-score.normal,
+.weather-severity.normal,
+.forecast-risk.normal,
+.weather-dashboard-score.normal { color: #62caff; }
+
+.weather-score.extreme { background: rgba(255, 59, 92, 0.13); }
+.weather-score.high { background: rgba(255, 159, 67, 0.13); }
+.weather-score.moderate { background: rgba(255, 209, 102, 0.13); }
+.weather-score.low { background: rgba(86, 214, 161, 0.13); }
+.weather-score.normal { background: rgba(54, 184, 255, 0.13); }
+
+.weather-row-copy {
+  min-width: 0;
+}
+
+.weather-row-copy strong,
+.weather-row-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.weather-row-copy strong { color: #dceeff; font-size: 12px; }
+.weather-row-copy small { margin-top: 4px; color: #718a9f; font-size: 10px; }
+.weather-severity { font-size: 9px; font-weight: 900; text-transform: uppercase; }
+
