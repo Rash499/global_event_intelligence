@@ -81,6 +81,13 @@ def init_db():
         longitude REAL,
         importance INTEGER DEFAULT 5,
         confidence REAL DEFAULT 0.5,
+        article_count INTEGER DEFAULT 1,
+        source_count INTEGER DEFAULT 1,
+        unique_source_count INTEGER DEFAULT 1,
+        corroboration_level TEXT DEFAULT 'single',
+        first_seen_at TEXT,
+        last_seen_at TEXT,
+        source_domains TEXT,
         event_time TEXT,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
@@ -138,6 +145,19 @@ def init_db():
     }
     if "image_url" not in article_columns:
         conn.execute("ALTER TABLE articles ADD COLUMN image_url TEXT")
+
+    event_columns = {row[1] for row in conn.execute("PRAGMA table_info(events)").fetchall()}
+    for column_name, column_sql in {
+        "article_count": "INTEGER DEFAULT 1",
+        "source_count": "INTEGER DEFAULT 1",
+        "unique_source_count": "INTEGER DEFAULT 1",
+        "corroboration_level": "TEXT DEFAULT 'single'",
+        "first_seen_at": "TEXT",
+        "last_seen_at": "TEXT",
+        "source_domains": "TEXT",
+    }.items():
+        if column_name not in event_columns:
+            conn.execute(f"ALTER TABLE events ADD COLUMN {column_name} {column_sql}")
 
     conn.commit()
     conn.close()
