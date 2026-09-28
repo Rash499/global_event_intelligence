@@ -1,0 +1,15 @@
+/* =========================================================
+   GLOBAL EVENT LIST
+   ========================================================= */
+
+.global-dashboard > .event-list {
+  border: 1px solid rgba(80, 145, 185, 0.14);
+  border-radius: 14px;
+
+  background:
+    rgba(4, 14, 24, 0.9);
+
+  max-height: 700px;
+}
+
+
