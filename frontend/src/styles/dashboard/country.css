@@ -13,14 +13,14 @@
 
 .country-header {
   position: relative;
-
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
   margin-bottom: 24px;
-
   padding: 28px;
-
   border: 1px solid rgba(80, 145, 185, 0.16);
   border-radius: 18px;
-
   background:
     radial-gradient(
       circle at 90% 20%,
@@ -33,6 +33,16 @@
       rgba(3, 13, 23, 0.96)
     );
 }
+
+.country-header-content {
+  flex: 1;
+}
+
+.country-minimap-wrapper {
+  width: clamp(320px, 30vw, 420px);
+  flex-shrink: 0;
+}
+
 
 .country-header .back-button {
   margin-bottom: 28px;
@@ -55,6 +65,42 @@
   letter-spacing: 0.15em;
 }
 
+/* Signal chips summarise the country brief under the title block. */
+.country-heading-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+
+  margin-top: 18px;
+}
+
+.country-signal-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  padding: 6px 11px;
+
+  border: 1px solid rgba(80, 145, 185, 0.2);
+  border-radius: 999px;
+
+  background:
+    rgba(7, 25, 38, 0.72);
+
+  color: #7e9cb2;
+
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.country-signal-chip b {
+  color: #6fd3ff;
+
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
 
 /* =========================================================
    COUNTRY STATISTICS
@@ -64,40 +110,137 @@
   display: grid;
 
   grid-template-columns:
-    repeat(3, minmax(0, 1fr));
+    repeat(4, minmax(0, 1fr));
 
   gap: 12px;
 
   margin-bottom: 20px;
 }
 
-.country-stats > div {
+.country-stat-card {
+  position: relative;
+
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 6px;
 
-  padding: 20px;
+  padding: 18px 18px 16px;
+
+  overflow: hidden;
 
   border: 1px solid rgba(80, 145, 185, 0.14);
-  border-radius: 12px;
+  border-radius: 14px;
 
   background:
-    rgba(6, 20, 32, 0.85);
+    linear-gradient(
+      150deg,
+      rgba(9, 30, 46, 0.92),
+      rgba(4, 14, 24, 0.92)
+    );
 }
 
-.country-stats strong {
+/* Accent rail keeps the four cards visually anchored to the palette. */
+.country-stat-card::before {
+  content: "";
+
+  position: absolute;
+  inset: 0 auto 0 0;
+
+  width: 3px;
+
+  background:
+    var(--stat-accent, #38bdf8);
+}
+
+.country-stat-card::after {
+  content: "";
+
+  position: absolute;
+  top: -40px;
+  right: -30px;
+
+  width: 120px;
+  height: 120px;
+
+  border-radius: 50%;
+
+  background:
+    radial-gradient(
+      circle,
+      var(--stat-glow, rgba(56, 189, 248, 0.16)),
+      transparent 68%
+    );
+
+  pointer-events: none;
+}
+
+.country-stat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.country-stat-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 26px;
+  height: 26px;
+
+  border-radius: 8px;
+
+  background:
+    rgba(56, 189, 248, 0.1);
+
+  color: var(--stat-accent, #38bdf8);
+
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.country-stat-label {
+  color: #668399;
+
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.country-stat-value {
   color: #e8f6ff;
 
   font-size: 30px;
+  line-height: 1.05;
 }
 
-.country-stats span {
-  color: #668399;
+.country-stat-hint {
+  color: #527088;
 
-  font-size: 11px;
+  font-size: 10.5px;
+}
 
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+/* Severity accents */
+.country-stat-card.is-critical {
+  --stat-accent: #ff5d7a;
+  --stat-glow: rgba(255, 93, 122, 0.16);
+}
+
+.country-stat-card.is-high {
+  --stat-accent: #ff9f43;
+  --stat-glow: rgba(255, 159, 67, 0.16);
+}
+
+.country-stat-card.is-moderate {
+  --stat-accent: #ffd166;
+  --stat-glow: rgba(255, 209, 102, 0.14);
+}
+
+.country-stat-card.is-low {
+  --stat-accent: #36b8ff;
+  --stat-glow: rgba(54, 184, 255, 0.16);
 }
 
 
@@ -155,8 +298,48 @@
   color: #58c9ff;
 }
 
+/* Three feature cards per row, collapsing to two then one on narrow screens. */
 .country-content .event-list {
-  max-height: 650px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+
+  max-height: 720px;
+
+  padding: 16px;
+
+  overflow-y: auto;
+}
+
+/* Equal height cards keep the grid rows tidy regardless of summary length. */
+.country-content .event-list .event-card-body {
+  flex: 1;
+}
+
+@media (max-width: 1200px) {
+  .country-content .event-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .country-content .event-list {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    padding: 12px;
+  }
+}
+
+/* Stack the hero once the map no longer fits beside the title block. */
+@media (max-width: 1080px) {
+  .country-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .country-minimap-wrapper {
+    width: 100%;
+  }
 }
 
 
