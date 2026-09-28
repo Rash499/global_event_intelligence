@@ -145,7 +145,7 @@ def _update_event_statistics(conn, event_id):
             ", ".join(domains),
             importance_score,
             round(confidence_score, 2),
-            last_seen_at or event_row["title"],
+            last_seen_at,
             event_id,
         ),
     )
@@ -340,9 +340,9 @@ async def ingest():
                 INSERT INTO events (
                     title, summary, category, country, country_code, latitude, longitude,
                     importance, confidence, article_count, source_count, unique_source_count,
-                    corroboration_level, first_seen_at, last_seen_at, source_domains, event_time, created_at
+                    corroboration_level, first_seen_at, last_seen_at, source_domains, event_time
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 1, 'single', ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 1, 'single', ?, ?, ?, ?)
                 """,
                 (
                     event_record["title"],
