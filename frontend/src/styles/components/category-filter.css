@@ -1,0 +1,83 @@
+/* =========================================================
+   CATEGORY FILTER
+   ========================================================= */
+
+.filters {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+
+  margin-bottom: 16px;
+
+  overflow-x: auto;
+
+  padding-bottom: 5px;
+
+  scrollbar-width: thin;
+}
+
+.filter-heading {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.filter-heading .section-eyebrow {
+  margin: 0;
+}
+
+.filter-selection {
+  color: #d4edfc;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.filter-options {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 5px;
+  scrollbar-width: thin;
+}
+
+.filter-button {
+  flex-shrink: 0;
+
+  border: 1px solid rgba(80, 145, 185, 0.2);
+  border-radius: 8px;
+
+  padding: 8px 13px;
+
+  background: rgba(8, 23, 36, 0.85);
+
+  color: #7993a8;
+
+  font-size: 12px;
+  font-weight: 600;
+
+  text-transform: capitalize;
+
+  transition: 0.2s ease;
+}
+
+.filter-button:hover {
+  border-color: rgba(56, 189, 248, 0.4);
+  color: #cdeeff;
+}
+
+.filter-button.active {
+  border-color: rgba(56, 189, 248, 0.55);
+
+  background:
+    rgba(10, 92, 137, 0.3);
+
+  color: #55c7ff;
+
+  box-shadow:
+    0 0 18px rgba(56, 189, 248, 0.08);
+}
+
+
