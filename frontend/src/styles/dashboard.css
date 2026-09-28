@@ -168,6 +168,121 @@
   padding-bottom: 40px;
 }
 
+.analytics-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 16px;
+  margin: 0 0 18px;
+}
+
+.analytics-panel {
+  border: 1px solid rgba(80, 145, 185, 0.14);
+  border-radius: 14px;
+  background: rgba(4, 14, 24, 0.92);
+  overflow: hidden;
+}
+
+.analytics-header {
+  padding: 18px 18px 0;
+  margin-bottom: 0;
+}
+
+.analytics-header h3 {
+  margin: 0;
+  color: #dfeeff;
+  font-size: 18px;
+}
+
+.timeline-chart {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  min-height: 180px;
+  padding: 16px 20px 18px;
+}
+
+.timeline-point {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: end;
+  gap: 8px;
+  height: 150px;
+}
+
+.timeline-bar {
+  width: 100%;
+  max-width: 26px;
+  min-height: 14px;
+  border-radius: 8px 8px 0 0;
+  background: linear-gradient(180deg, #4ad1ff 0%, #7e7ef5 100%);
+  box-shadow: 0 10px 20px rgba(74, 209, 255, 0.2);
+}
+
+.timeline-point small {
+  color: #67849d;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.category-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 18px 20px;
+}
+
+.category-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.category-row-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #dfeeff;
+  font-size: 13px;
+}
+
+.category-row strong {
+  color: #58c9ff;
+  font-size: 14px;
+}
+
+.category-row small {
+  color: #67849d;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.category-bar-track {
+  position: relative;
+  height: 8px;
+  border: 1px solid rgba(80, 145, 185, 0.18);
+  border-radius: 999px;
+  background: rgba(11, 35, 51, 0.9);
+  overflow: hidden;
+}
+
+.category-bar-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #72dcb1 0%, #58c9ff 100%);
+}
+
+.analytics-placeholder {
+  padding: 24px 20px 18px;
+  color: #7893a7;
+  font-size: 13px;
+}
+
 /* =========================================================
    EVENT HISTORY GRID (3 cards per row)
    ========================================================= */
@@ -556,6 +671,10 @@
   .country-stats {
     grid-template-columns:
       1fr 1fr 1fr;
+  }
+
+  .analytics-grid {
+    grid-template-columns: 1fr;
   }
 
   .advanced-filters {
