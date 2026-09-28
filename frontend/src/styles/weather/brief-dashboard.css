@@ -1,0 +1,58 @@
+.weather-dashboard { max-width: 1500px; margin: 0 auto; animation: wxIn .35s ease; }
+@keyframes wxIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.weather-dashboard-header { display: block; margin-bottom: 18px; }
+.brief-top { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 14px; }
+.brief-actions { display: flex; gap: 8px; align-items: center; }
+.unit-toggle { display: flex; border: 1px solid rgba(80,145,185,.25); border-radius: 99px; overflow: hidden; }
+.unit-toggle button { background: transparent; border: 0; color: #8aa3b6; padding: 6px 12px; font-weight: 800; cursor: pointer; }
+.unit-toggle button.on { background: rgba(56,189,248,.25); color: #eaf7ff; }
+.ghost-btn, .wx-more { border: 1px solid rgba(80,145,185,.25); background: rgba(10,30,45,.7); color: #cfe7f7; border-radius: 10px; padding: 8px 12px; cursor: pointer; }
+.ghost-btn:hover, .wx-more:hover { border-color: rgba(56,189,248,.5); }
+.brief-hero { display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center; padding: 18px; border: 1px solid rgba(80,145,185,.18); border-radius: 14px; background: linear-gradient(145deg, rgba(10,29,44,.95), rgba(4,15,26,.95)); margin-bottom: 14px; }
+
+.weather-dashboard-header h2 {
+  margin: 5px 0 7px;
+  font-size: clamp(28px, 4vw, 48px);
+}
+
+.weather-dashboard-header p {
+  margin-bottom: 0;
+  color: #8299ae;
+}
+
+.weather-dashboard-score {
+  display: grid;
+  min-width: 110px;
+  padding: 14px 18px;
+  border: 1px solid currentColor;
+  border-radius: 14px;
+  background: rgba(7, 22, 34, 0.8);
+  text-align: center;
+}
+
+.weather-dashboard-score strong { font-size: 38px; line-height: 1; }
+.weather-dashboard-score span { margin-top: 6px; font-size: 10px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; }
+.weather-dashboard-score small { display: block; margin-top: 8px; color: #7e96aa; font-size: 10px; }
+.brief-sub { margin-top: 6px !important; color: #9db4c6 !important; }
+.chip.ghost { color: #9db4c6; border-color: rgba(120,160,185,.28); }
+.chip.extreme { color: #ff6b82; } .chip.high { color: #ffae63; } .chip.moderate { color: #ffd166; } .chip.low { color: #6fe0b3; } .chip.normal { color: #62caff; }
+.brief-tabs { display: flex; gap: 8px; margin: 2px 0 16px; }
+.brief-tab { border: 1px solid rgba(80,145,185,.22); background: rgba(7,22,34,.7); color: #8ea7bb; border-radius: 10px; padding: 9px 14px; font-weight: 800; cursor: pointer; }
+.brief-tab.on { color: #eaf7ff; background: rgba(13,71,101,.65); border-color: rgba(56,189,248,.45); }
+.brief-side { display: grid; gap: 16px; align-content: start; }
+.wx-controls { display: grid; gap: 10px; margin-bottom: 12px; }
+.wx-search { width: 100%; border: 1px solid rgba(80,145,185,.22); background: rgba(4,15,26,.8); color: #dceeff; border-radius: 10px; padding: 9px 12px; }
+.wx-chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.wx-chip { border: 1px solid rgba(80,145,185,.22); background: transparent; color: #8ea7bb; border-radius: 99px; padding: 5px 10px; font-size: 10px; font-weight: 800; text-transform: uppercase; cursor: pointer; }
+.wx-chip.on { background: rgba(56,189,248,.2); color: #eaf7ff; border-color: rgba(56,189,248,.5); }
+.wx-sort-row { display: flex; justify-content: space-between; align-items: center; color: #7e96aa; font-size: 11px; }
+.wx-sort-row select { background: rgba(4,15,26,.9); color: #dceeff; border: 1px solid rgba(80,145,185,.25); border-radius: 8px; padding: 5px 8px; }
+.weather-row { grid-template-columns: auto 42px minmax(0,1fr) auto; transition: transform .15s ease, border-color .15s ease; }
+.weather-row:hover { transform: translateY(-1px); }
+.weather-row.on { border-color: rgba(56,189,248,.55); background: rgba(12,45,65,.9); }
+.wx-rank { color: #5f788d; font-size: 10px; font-weight: 900; }
+.wx-meter { display: block; height: 4px; margin-top: 6px; border-radius: 99px; background: rgba(100,140,165,.16); overflow: hidden; }
+.wx-meter span { display: block; height: 100%; background: linear-gradient(90deg,#36b8ff,#ffb020,#ff3b5c); }
+.wx-empty { color: #7e96aa; font-size: 12px; padding: 14px; text-align: center; }
+.wx-more { width: 100%; margin-top: 10px; }
+.wx-count { font-size: 10px; }
