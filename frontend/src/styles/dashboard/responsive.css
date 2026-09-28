@@ -1,0 +1,136 @@
+/* =========================================================
+   RESPONSIVE
+   ========================================================= */
+
+@media (max-width: 800px) {
+  .country-stats {
+    grid-template-columns:
+      1fr 1fr 1fr;
+  }
+
+  .analytics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .advanced-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .dashboard-header-status {
+    align-items: flex-start;
+  }
+
+  .dashboard-pulse {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .country-header {
+    padding: 20px;
+  }
+
+  .country-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-header {
+    padding: 20px;
+  }
+
+  .dashboard-header h2 {
+    font-size: 32px;
+  }
+
+  .dashboard-pulse {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .pulse-item {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .pulse-item span {
+    text-align: left;
+  }
+}
+
+.country-heading p {
+  max-width: 560px;
+  margin: 0;
+  color: #7893a7;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.country-notice,
+.country-loading {
+  padding: 18px;
+  border: 1px solid rgba(255, 113, 136, 0.22);
+  border-radius: 12px;
+  background: rgba(104, 24, 45, 0.2);
+  color: #ff9bad;
+}
+
+.country-loading {
+  border-color: rgba(80, 145, 185, 0.14);
+  background: transparent;
+  color: #7893a7;
+}
+
+.country-content-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 20px 16px;
+}
+
+.country-content-header h3 {
+  margin: 0;
+  color: #dcecff;
+  font-size: 18px;
+}
+
+.country-live-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #72dcb1;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.country-live-status i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #56d6a1;
+  box-shadow: 0 0 10px rgba(86, 214, 161, 0.8);
+}
+
+.country-filters button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.country-filters button span {
+  color: #4e7188;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.country-filters button.active span,
+.country-filters button:hover span {
+  color: #8edcff;
+}
