@@ -62,12 +62,15 @@ export function normalizeCountryCode(code) {
   return CODE_ALIASES[upper] || upper;
 }
 
-function featureCodes(props = {}) {
-  const keys = [
-    "ISO_A2", "ISO_A2_E", "ISO_A2_EH", "WB_A2",
-    "ISO_A3", "ISO_A3_EH", "ADM0_A3", "ADM0_A3_UN", "ADM0_A3_WB",
-    "GU_A3", "SU_A3", "BRK_A3", "SOV_A3", "ISO_N3", "POSTAL",
-  ];
+// ISO 2-letter codes only. Natural Earth's POSTAL field is a mail code that
+// collides across countries (eSwatini=ES, N. Cyprus=CN, Somaliland=SL).
+const CODE_KEYS = [
+  "ISO_A2", "ISO_A2_E", "ISO_A2_EH", "WB_A2",
+  "ISO_A3", "ISO_A3_EH", "ADM0_A3", "ADM0_A3_UN", "ADM0_A3_WB",
+  "GU_A3", "SU_A3", "BRK_A3", "SOV_A3", "ISO_N3",
+];
+
+function featureCodes(props = {}, keys = CODE_KEYS) {
   const out = new Set();
   keys.forEach((key) => {
     const value = props[key];
@@ -80,10 +83,45 @@ function featureCodes(props = {}) {
   return out;
 }
 
+/**
+ * Agency codes describing the unit itself. Sovereign codes (SOV_A3) are left
+ * out on purpose: Natural Earth reuses them for dependencies, so "FR1" would
+ * pull New Caledonia into the French outline.
+ */
+const PREFIX_CODE_KEYS = [
+  "ISO_A3", "ISO_A3_EH", "ADM0_A3", "ADM0_A3_UN", "ADM0_A3_WB",
+  "GU_A3", "SU_A3", "BRK_A3",
+];
+
+// Short aliases like "us"/"uk" must never match inside another word.
+const MIN_TOKEN_LENGTH = 4;
+
+function significantTokens(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(" ")
+    .filter((token) => token.length >= MIN_TOKEN_LENGTH);
+}
+
+/** True when every significant word of the variant appears in a candidate name. */
+function tokenSubsetOf(variant, candidateNames) {
+  const needed = significantTokens(variant);
+  if (!needed.length) return false;
+
+  return candidateNames.some((name) => {
+    const tokens = new Set(significantTokens(name));
+    return needed.every((token) => tokens.has(token));
+  });
+}
+
+// Self-identifying names only: SOVEREIGNT belongs to the parent country, so
+// including it would attach dependencies (e.g. New Caledonia) to France.
 function featureNames(props = {}) {
   const keys = [
     "NAME", "ADMIN", "NAME_LONG", "FORMAL_EN", "BRK_NAME",
-    "NAME_SORT", "GEOUNIT", "SOVEREIGNT", "NAME_EN",
+    "NAME_SORT", "GEOUNIT", "NAME_EN",
   ];
   const out = new Set();
   keys.forEach((key) => {
@@ -128,46 +166,41 @@ function expandNameVariants(name) {
 export function matchCountryFeatures(features = [], countryCode, countryName) {
   const code = normalizeCountryCode(countryCode);
   const variants = expandNameVariants(countryName);
-  const scored = [];
+
+  // Tiers are exclusive: a confident ISO hit must not be diluted with
+  // dependencies or look-alike names (e.g. Falkland Is. widening the UK outline,
+  // or Puerto Rico widening the US outline).
+  const tiers = [[], [], [], []];
   (features || []).forEach((feature) => {
     const props = feature?.properties || {};
     const codes = featureCodes(props);
-    const names = featureNames(props);
-    let score = 0;
-    let reason = "";
+
     if (code && codes.has(code)) {
-      score = 100;
-      reason = "iso-code";
-    } else if (code && code.length === 2) {
-      const threeLetterHit = [...codes].some((candidate) => candidate.startsWith(code));
-      if (threeLetterHit) {
-        score = 40;
-        reason = "code-prefix";
-      }
+      tiers[0].push({ feature: feature, score: 100, reason: "iso-code" });
+      return;
     }
-    if (!score && variants.length) {
-      for (const variant of variants) {
-        if (names.has(variant)) {
-          score = 90;
-          reason = "exact-name";
-          break;
-        }
-      }
-      if (!score) {
-        for (const variant of variants) {
-          const hit = [...names].some(
-            (candidate) => candidate.includes(variant) || variant.includes(candidate)
-          );
-          if (hit) {
-            score = 60;
-            reason = "fuzzy-name";
-            break;
-          }
-        }
-      }
+
+    const names = featureNames(props);
+    if (variants.some((variant) => names.has(variant))) {
+      tiers[1].push({ feature: feature, score: 90, reason: "exact-name" });
+      return;
     }
-    if (score > 0) scored.push({ feature: feature, score: score, reason: reason });
+
+    if (variants.some((variant) => tokenSubsetOf(variant, [...names]))) {
+      tiers[2].push({ feature: feature, score: 60, reason: "name-words" });
+      return;
+    }
+
+    if (code && code.length === 2) {
+      const prefixHit = [...featureCodes(props, PREFIX_CODE_KEYS)].some(
+        (candidate) => /^[A-Z]+$/.test(candidate) && candidate.startsWith(code)
+      );
+      if (prefixHit) tiers[3].push({ feature: feature, score: 40, reason: "code-prefix" });
+    }
   });
-  scored.sort((a, b) => b.score - a.score);
-  return scored;
+
+  const matched = tiers.find((tier) => tier.length);
+  if (!matched) return [];
+  matched.sort((a, b) => b.score - a.score);
+  return matched;
 }
