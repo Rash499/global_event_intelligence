@@ -29,9 +29,29 @@ import "./styles/globals.css";
 import "./styles/auth.css";
 import "./styles/alerts.css";
 import "./styles/globe.css";
-import "./styles/dashboard.css";
-import "./styles/components.css";
-import "./styles/weather.css";
+import "./styles/dashboard/country.css";
+import "./styles/dashboard/global-overview.css";
+import "./styles/dashboard/history.css";
+import "./styles/dashboard/filters.css";
+import "./styles/dashboard/global-list.css";
+import "./styles/dashboard/responsive.css";
+import "./styles/components/header.css";
+import "./styles/components/stats.css";
+import "./styles/components/category-filter.css";
+import "./styles/components/panels-events.css";
+import "./styles/components/event-detail.css";
+import "./styles/components/interactions.css";
+import "./styles/components/detail-panel.css";
+import "./styles/components/sources.css";
+import "./styles/components/responsive.css";
+import "./styles/weather/mode-toggle.css";
+import "./styles/weather/panel-list.css";
+import "./styles/weather/brief-dashboard.css";
+import "./styles/weather/grid-controls.css";
+import "./styles/weather/mini-map.css";
+import "./styles/weather/city-samples.css";
+import "./styles/weather/forecast-risk.css";
+import "./styles/weather/responsive.css";
 
 function getCountryCode(feature) {
   const candidates = [
