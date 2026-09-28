@@ -1,0 +1,97 @@
+/* =========================================================
+   ADVANCED FILTERS
+   ========================================================= */
+
+.advanced-filters {
+  display: grid;
+
+  grid-template-columns:
+    1fr 1fr 1.4fr;
+
+  gap: 12px;
+
+  margin-bottom: 20px;
+
+  padding: 18px;
+
+  border: 1px solid rgba(80, 145, 185, 0.14);
+  border-radius: 14px;
+
+  background:
+    rgba(5, 19, 30, 0.9);
+}
+
+.filters-heading {
+  display: flex !important;
+  grid-column: 1 / -1;
+  flex-direction: row !important;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 18px;
+}
+
+.filters-heading .section-eyebrow {
+  margin: 0;
+}
+
+.reset-filters {
+  border: 0;
+  background: transparent;
+  color: #62cafa;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.reset-filters:hover {
+  color: #ffffff;
+}
+
+.advanced-filters > div {
+  display: flex;
+  flex-direction: column;
+
+  gap: 7px;
+}
+
+.advanced-filters label {
+  color: #6e899e;
+
+  font-size: 10px;
+  font-weight: 700;
+
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.advanced-filters select {
+  width: 100%;
+
+  border: 1px solid rgba(80, 145, 185, 0.2);
+  border-radius: 8px;
+
+  padding: 10px 12px;
+
+  outline: none;
+
+  background:
+    #071827;
+
+  color: #b9d7e9;
+
+  font-size: 12px;
+}
+
+.advanced-filters select:focus {
+  border-color:
+    rgba(56, 189, 248, 0.5);
+}
+
+.advanced-filters input[type="range"] {
+  width: 100%;
+
+  margin-top: 9px;
+
+  accent-color: #38bdf8;
+}
+
+
