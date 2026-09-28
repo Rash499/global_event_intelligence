@@ -1,8 +1,9 @@
 import asyncio
 import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from .config import settings
 from .database.db import init_db, purge_expired_events
@@ -30,6 +31,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Return a JSON 500 instead of letting the error escape the CORS middleware.
+
+    Starlette renders unhandled exceptions outside ``CORSMiddleware``, so the
+    browser reports them as CORS failures. Handling them here keeps the CORS
+    headers on the response and logs the real traceback server side.
+    """
+    logger.exception(
+        "Unhandled error while handling %s %s", request.method, request.url.path
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error. Check the backend logs."},
+    )
 
 
 async def _purge_expired_events_periodically():
