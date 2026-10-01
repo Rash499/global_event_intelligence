@@ -7,7 +7,7 @@ An MVP AI-powered global news/event intelligence map.
 
 ## Architecture
 
-News Sources (GDELT + RSS)
+News Sources (GDELT + RSS + Google News RSS)
         |
         v
 FastAPI ingestion service
@@ -33,7 +33,7 @@ The database layer can later be upgraded to PostgreSQL/PostGIS.
 - Python 3.11+
 - Node.js 20+
 - npm
-- Internet connection for GDELT/RSS ingestion
+- Internet connection for GDELT/RSS/Google News RSS ingestion
 - Optional: Ollama for local AI analysis
 
 ## 1. Backend
