@@ -206,6 +206,140 @@ Statistics:
 GET /api/statistics/global
 ```
 
+Global Intelligence Assistant (Phase 3):
+```text
+POST /api/ai/query        {"question": "What happened in Japan recently?"}
+GET  /api/ai/status
+GET  /api/ai/suggestions
+POST /api/ai/index        {"force": false, "limit": 300}
+```
+
+## 8. Global Intelligence Assistant (Phase 3)
+
+The assistant answers questions strictly from indexed platform data. Every answer
+carries numbered evidence records and source links that were verified against the
+SQLite `events`/`articles` tables, so it cannot invent citations. If the model,
+the embedding provider or the vector store is unavailable, the API returns a
+structured status (`llm_unavailable`, `insufficient_data`, `out_of_scope`,
+`ungrounded`) instead of failing, and Phases 1/2 keep working unchanged.
+
+### 8.1 Setup
+
+```bash
+# 1. Chat model used for grounded answers
+ollama pull llama3.2:3b
+
+# 2. Embedding model used for retrieval
+ollama pull nomic-embed-text
+```
+
+Optional semantic vector store (the default `auto` mode uses SQLite when Qdrant
+is unreachable):
+
+```bash
+docker run -p 6333:6333 qdrant/qdrant
+```
+
+Enable the assistant in the backend environment:
+
+```bash
+# backend/.env
+RAG_ENABLED=true
+RAG_EMBEDDING_PROVIDER=ollama          # ollama | hashing (offline, no server needed)
+RAG_VECTOR_STORE=auto                  # auto | sqlite | qdrant
+QDRANT_URL=http://localhost:6333
+QDRANT_COLLECTION=global_event_intelligence
+
+OLLAMA_CHAT_MODEL=llama3.2:3b          # falls back to OLLAMA_MODEL
+OLLAMA_EMBEDDING_MODEL=nomic-embed-text
+OLLAMA_REQUEST_TIMEOUT_SECONDS=180     # small local models can be slow
+OLLAMA_MAX_TOKENS=512                  # bounds answer length/time on small models
+```
+
+Environment variables for local development and tests only:
+
+```bash
+RAG_EMBEDDING_PROVIDER=hashing         # deterministic offline embedder
+RAG_VECTOR_STORE=sqlite                # built-in lexical/vector search index
+```
+
+### 8.2 Indexing
+
+The index is incremental: documents are hashed, unchanged documents are skipped,
+and changed documents are re-embedded. Indexing runs in the background:
+
+- once shortly after backend startup (`RAG_INDEX_ON_STARTUP`, default `true`,
+  delayed by `RAG_INDEX_STARTUP_DELAY_SECONDS`);
+- after each successful news ingestion cycle;
+- on demand with `POST /api/ai/index` or the **Re-index** button in the
+  assistant UI.
+
+### 8.3 Configuration reference
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `RAG_ENABLED` | `true` | Master switch for the assistant. |
+| `RAG_EMBEDDING_PROVIDER` | `ollama` | `ollama` (semantic) or `hashing` (offline). |
+| `OLLAMA_EMBEDDING_MODEL` | `nomic-embed-text` | Embedding model. |
+| `RAG_EMBEDDING_DIMENSIONS` | `768` | Vector width. |
+| `RAG_VECTOR_STORE` | `auto` | `auto`, `sqlite` or `qdrant`. |
+| `QDRANT_URL` / `QDRANT_API_KEY` | `http://localhost:6333` | Qdrant connection. |
+| `QDRANT_COLLECTION` | `global_event_intelligence` | Collection name. |
+| `RAG_TOP_K` | `8` | Evidence records per answer. |
+| `RAG_MAX_CONTEXT_DOCUMENTS` | `10` | Records placed in the prompt. |
+| `RAG_MAX_CONTEXT_CHARACTERS` | `12000` | Prompt budget for evidence. |
+| `RAG_VECTOR_WEIGHT` / `RAG_LEXICAL_WEIGHT` | `0.6` / `0.4` | Hybrid scoring mix. |
+| `RAG_MIN_RELEVANCE` | `0.05` | Below this the answer is `insufficient_data`. |
+| `RAG_INDEX_ON_STARTUP` | `true` | Index after backend start. |
+| `RAG_INGESTION_INDEX_LIMIT` | `25` | Documents indexed after a news cycle. |
+| `RAG_INDEX_STARTUP_PAUSE_SECONDS` | `2.0` | Pause between startup batches. |
+| `RAG_AUTO_INDEX_ON_QUERY` | `true` | Top up the index when a query finds nothing. |
+| `RAG_AUTO_INDEX_BACKGROUND` | `true` | Run that top-up off the request path. |
+| `RAG_STATUS_CACHE_TTL_SECONDS` | `5.0` | `/api/ai/status` cache (the UI polls it). |
+| `RAG_INDEX_BATCH_LIMIT` | `300` | Documents per indexing run. |
+
+### 8.3.1 Performance notes
+
+Indexing is deliberately kept off the critical path, because it shares the same
+model server as the assistant:
+
+- only one indexing run happens at a time (startup, ingestion and query top-ups
+  are mutually exclusive);
+- a news cycle indexes a small batch (`RAG_INGESTION_INDEX_LIMIT`) because only a
+  few events are new, and the rest is picked up later;
+- startup indexing pauses between batches and yields to the event loop;
+- the pre-query top-up runs in the background, so an answer is never delayed by
+  it;
+- the optional Qdrant probe is cached (and fails fast on a closed port), the
+  SQLite vector store keeps a decoded embedding matrix in memory, and
+  `/api/ai/status` is briefly cached.
+
+### 8.4 Using it
+
+Open **Global Intelligence** in the app header (or `/` → assistant view). The
+status chips show whether the assistant, the chat model, the embedding provider,
+the vector store and the index are ready. Suggested questions include ones
+derived from the current database contents.
+
+```bash
+curl -X POST http://localhost:8000/api/ai/query \
+  -H "Content-Type: application/json" \
+  -d "{\"question\": \"What happened in Japan recently?\"}"
+```
+
+### 8.5 Tests
+
+```bash
+cd backend
+python -m pytest tests -q
+```
+
+`tests/test_rag.py` never needs a running Ollama or Qdrant server: it uses the
+offline hashing embedder, the SQLite vector store and an unreachable Ollama URL
+to verify graceful degradation. Every test runs against a temporary database.
+`tests/eval_dataset.json` holds the curated retrieval/scope evaluation set; the
+report test prints scope accuracy and retrieval coverage.
+
 ## Project structure
 
 ```text
@@ -213,25 +347,44 @@ global-event-intelligence/
 ├── backend/
 │   ├── app/
 │   │   ├── api/
+│   │   │   ├── ai.py
 │   │   │   ├── countries.py
 │   │   │   ├── events.py
 │   │   │   ├── health.py
 │   │   │   ├── ingestion.py
 │   │   │   ├── routes.py
 │   │   │   └── statistics.py
+│   │   ├── rag/
+│   │   │   ├── documents.py
+│   │   │   ├── embeddings.py
+│   │   │   ├── indexer.py
+│   │   │   ├── llm.py
+│   │   │   ├── models.py
+│   │   │   ├── prompts.py
+│   │   │   ├── query.py
+│   │   │   ├── retriever.py
+│   │   │   ├── schema.py
+│   │   │   ├── service.py
+│   │   │   └── vector_store.py
 │   │   ├── ai/
 │   │   ├── database/
 │   │   ├── ingestion/
 │   │   ├── processing/
 │   │   └── main.py
+│   ├── tests/
+│   │   ├── eval_dataset.json
+│   │   ├── test_intelligence.py
+│   │   └── test_rag.py
 │   ├── data/
 │   ├── requirements.txt
 │   └── .env.example
 ├── frontend/
 │   ├── src/
 │   │   ├── components/
+│   │   │   └── assistant/
 │   │   ├── services/
 │   │   ├── styles/
+│   │   │   └── assistant/
 │   │   ├── App.jsx
 │   │   └── main.tsx
 │   ├── package.json
