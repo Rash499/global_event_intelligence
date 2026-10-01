@@ -54,7 +54,17 @@ import "./styles/weather/mini-map.css";
 import "./styles/weather/city-samples.css";
 import "./styles/weather/forecast-risk.css";
 import "./styles/weather/responsive.css";
-import "./styles/assistant/assistant.css";
+import "./styles/assistant/tokens.css";
+import "./styles/assistant/nav-button.css";
+import "./styles/assistant/header.css";
+import "./styles/assistant/status.css";
+import "./styles/assistant/suggestions.css";
+import "./styles/assistant/thread.css";
+import "./styles/assistant/reply.css";
+import "./styles/assistant/evidence.css";
+import "./styles/assistant/sources.css";
+import "./styles/assistant/composer.css";
+import "./styles/assistant/responsive.css";
 
 function getCountryCode(feature) {
   const candidates = [

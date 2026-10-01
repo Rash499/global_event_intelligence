@@ -1,0 +1,66 @@
+/* =========================================================
+   PHASE 3 - ASSISTANT - Responsive
+   Narrow viewports: stack the thread, composer and grids.
+   ========================================================= */
+
+@media (max-width: 900px) {
+  .assistant-thread {
+    max-height: none;
+    padding: var(--ai-space-4);
+  }
+
+  .assistant-message {
+    max-width: 100%;
+  }
+
+  .assistant-message.user {
+    max-width: 100%;
+  }
+
+  .assistant-sources ul {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .assistant-header {
+    padding: var(--ai-space-5) var(--ai-space-4) var(--ai-space-4);
+  }
+
+  .assistant-header h2 {
+    font-size: 22px;
+  }
+
+  .assistant-suggestions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .assistant-status-grid {
+    padding: var(--ai-space-3);
+  }
+
+  .assistant-chip {
+    flex: 1 1 auto;
+    justify-content: flex-start;
+    white-space: normal;
+  }
+
+  .assistant-reindex {
+    margin-left: 0;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .assistant-composer {
+    flex-direction: column;
+  }
+
+  .assistant-composer button {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .assistant-evidence summary {
+    line-height: 1.5;
+  }
+}
