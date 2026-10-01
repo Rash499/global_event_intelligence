@@ -1,4 +1,4 @@
-export default function Header({ onCollect, loading, user, onLogout }) {
+export default function Header({ onCollect, loading, user, onLogout, onOpenAssistant }) {
   return (
     <header className="app-header">
       <div className="header-content">
@@ -30,6 +30,13 @@ export default function Header({ onCollect, loading, user, onLogout }) {
             <strong>{user?.display_name}</strong>
             <span>{user?.email}</span>
           </div>
+          <button
+            className="assistant-nav-button"
+            onClick={onOpenAssistant}
+            title="Ask the RAG assistant about collected events"
+          >
+            ✦ Global Intelligence
+          </button>
           <button
             className="collect-button"
             onClick={onCollect}
