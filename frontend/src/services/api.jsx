@@ -120,3 +120,34 @@ export const deleteEventComment = async (eventId, commentId) => {
   return response.data;
 };
 
+// ---------------------------------------------------------------------------
+// Phase 3 - Global Intelligence Assistant (RAG)
+// ---------------------------------------------------------------------------
+
+export const askAssistant = async (payload) => {
+  // Grounded answers can take a while (local Ollama inference), so this call
+  // gets a much larger timeout than the default 30s.
+  const response = await api.post("/ai/query", payload, {
+    timeout: 180000,
+  });
+  return response.data;
+};
+
+export const getAssistantStatus = async () => {
+  const response = await api.get("/ai/status", { timeout: 15000 });
+  return response.data;
+};
+
+export const getAssistantSuggestions = async () => {
+  const response = await api.get("/ai/suggestions", { timeout: 15000 });
+  return response.data;
+};
+
+export const runAssistantIndexing = async (options = {}) => {
+  const response = await api.post("/ai/index", options, {
+    timeout: 300000,
+  });
+  return response.data;
+};
+
+
