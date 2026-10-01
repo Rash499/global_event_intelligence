@@ -30,6 +30,135 @@ def test_different_event_is_not_duplicate():
     assert is_duplicate(a, b) is False
 
 
+# ---------------------------------------------------------------------------
+# Regression: 500 responses must keep their CORS headers
+# ---------------------------------------------------------------------------
+
+
+def test_unhandled_error_response_keeps_cors_headers():
+    """A failing endpoint must not surface in the browser as a CORS error.
+
+    Starlette renders unhandled exceptions in ``ServerErrorMiddleware``, which
+    sits outside ``CORSMiddleware``. A handler registered with
+    ``@app.exception_handler(Exception)`` therefore produced a 500 with no
+    ``Access-Control-Allow-Origin`` header, and the browser reported a
+    perfectly healthy backend as blocked by CORS policy.
+    """
+    @app.get("/_test_boom")
+    async def _boom():
+        raise RuntimeError("intentional test failure")
+
+    # raise_server_exceptions=False exercises the real 500 path.
+    boom_client = TestClient(app, raise_server_exceptions=False)
+    response = boom_client.get(
+        "/_test_boom", headers={"Origin": "http://localhost:5173"}
+    )
+
+    assert response.status_code == 500
+    assert response.headers.get("access-control-allow-origin") == (
+        "http://localhost:5173"
+    )
+    # The client gets a readable message, never a stack trace.
+    assert "detail" in response.json()
+    assert "Traceback" not in response.text
+
+
+def test_successful_response_keeps_cors_headers():
+    """The normal path must keep working (guard against ordering mistakes)."""
+    ok_client = TestClient(app, raise_server_exceptions=False)
+    response = ok_client.get("/", headers={"Origin": "http://localhost:5173"})
+
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == (
+        "http://localhost:5173"
+    )
+
+
+def test_cors_preflight_is_answered():
+    """The browser preflight for the ingestion POST must be handled."""
+    preflight = client.options(
+        "/api/ingestion/run",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+
+    assert preflight.status_code == 200
+    assert preflight.headers.get("access-control-allow-origin") == (
+        "http://localhost:5173"
+    )
+    assert "POST" in preflight.headers.get("access-control-allow-methods", "")
+
+
+# ---------------------------------------------------------------------------
+# Regression: concurrent writers must not fail with "database is locked"
+# ---------------------------------------------------------------------------
+
+
+def test_write_connection_waits_instead_of_failing(tmp_path, monkeypatch):
+    """``write_connection`` must not raise "database is locked" under contention.
+
+    A deferred transaction that reads first and writes later tries to *upgrade*
+    a read lock to a write lock, and SQLite fails that immediately without
+    honouring ``busy_timeout``. Taking the write lock up front with
+    ``BEGIN IMMEDIATE`` makes the busy timeout apply.
+    """
+    import sqlite3
+    import threading
+
+    from app.database import db as db_module
+
+    db_path = tmp_path / "contended.db"
+    monkeypatch.setattr(db_module, "DB_PATH", db_path)
+
+    setup = db_module.get_connection()
+    setup.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)")
+    setup.commit()
+    setup.close()
+
+    started = threading.Event()
+    release = threading.Event()
+    errors = []
+
+    def hold_the_write_lock():
+        holder = db_module.get_connection()
+        holder.execute("BEGIN IMMEDIATE")
+        holder.execute("INSERT INTO t (v) VALUES ('holder')")
+        started.set()
+        release.wait(10)
+        holder.execute("COMMIT")
+        holder.close()
+
+    thread = threading.Thread(target=hold_the_write_lock)
+    thread.start()
+    assert started.wait(10), "helper thread never took the write lock"
+
+    def do_a_write():
+        try:
+            with db_module.write_connection() as conn:
+                conn.execute("INSERT INTO t (v) VALUES ('waiter')")
+        except sqlite3.OperationalError as exc:  # pragma: no cover - failure path
+            errors.append(str(exc))
+        finally:
+            release.set()
+
+    writer = threading.Thread(target=do_a_write)
+    writer.start()
+    writer.join(20)
+
+    release.set()
+    thread.join(10)
+
+    assert not errors, f"write_connection failed under contention: {errors}"
+
+    check = db_module.get_connection()
+    values = [row["v"] for row in check.execute("SELECT v FROM t").fetchall()]
+    check.close()
+    assert "waiter" in values
+
+
 def test_normalize_category_handles_known_name():
     assert normalize_category("Natural Disaster") == "natural_disaster"
     assert normalize_category("nonsense") == "other"
