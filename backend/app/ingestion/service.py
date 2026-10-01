@@ -3,9 +3,8 @@ import logging
 from datetime import datetime, timezone
 
 from .gdelt import fetch_gdelt
+from .google_news import fetch_google_news
 from .rss import fetch_rss
-from .reddit import fetch_reddit
-from .x import fetch_x
 
 from ..ai.ollama import analyze_with_ollama
 from ..config import settings
@@ -18,37 +17,28 @@ from ..intelligence.importance import score_event_importance
 from ..intelligence.verification import determine_corroboration_level
 from ..processing.analyzer import analyze
 
-logger = logging.getLogger(__name__)
-
-# Strong references to fire-and-forget tasks so they are not garbage collected
-# mid-flight; entries are removed when the task finishes.
 _background_tasks: set[asyncio.Task] = set()
 
 
 def _schedule_rag_indexing():
-    """Kick off Phase 3 indexing in the background after ingestion.
-
-    Non-blocking and fail-graceful: index/embedding problems are logged inside
-    ``index_after_ingestion`` and can never break ingestion (Phases 1/2).
-    """
+    """Kick off Phase 3 indexing in the background after ingestion."""
     if not settings.rag_enabled:
         return
-
     try:
         from ..rag.indexer import index_after_ingestion
-
         task = asyncio.create_task(index_after_ingestion())
         _background_tasks.add(task)
         task.add_done_callback(_background_tasks.discard)
-    except Exception as exc:  # noqa: BLE001 - never block ingestion
+    except Exception as exc:
         logger.warning("[RAG] Could not schedule post-ingestion indexing: %s", exc)
+
+
+logger = logging.getLogger(__name__)
 
 
 def _event_time_from_article(article):
     value = article.get("published_at") or article.get("event_time")
-    if value:
-        return value
-    return datetime.now(timezone.utc).isoformat()
+    return value or datetime.now(timezone.utc).isoformat()
 
 
 def _normalize_event_record(article, analysis):
@@ -56,12 +46,25 @@ def _normalize_event_record(article, analysis):
         (article.get("category") or analysis.get("category") or "other")
     )
     title = (article.get("title") or analysis.get("title") or "Untitled").strip()
-    summary = (article.get("summary") or analysis.get("summary") or article.get("description") or title).strip()
+    summary = (
+        article.get("summary")
+        or analysis.get("summary")
+        or article.get("description")
+        or title
+    ).strip()
     country = article.get("country") or analysis.get("country")
     country_code = article.get("country_code") or analysis.get("country_code")
-    latitude = article.get("latitude") if article.get("latitude") is not None else analysis.get("latitude")
-    longitude = article.get("longitude") if article.get("longitude") is not None else analysis.get("longitude")
-    importance_base = int((analysis.get("importance") or 5))
+    latitude = (
+        article.get("latitude")
+        if article.get("latitude") is not None
+        else analysis.get("latitude")
+    )
+    longitude = (
+        article.get("longitude")
+        if article.get("longitude") is not None
+        else analysis.get("longitude")
+    )
+    importance_base = int(analysis.get("importance") or 5)
     importance = score_event_importance(
         {
             "severity": importance_base,
@@ -72,7 +75,7 @@ def _normalize_event_record(article, analysis):
             "urgency": 6,
         }
     )
-    confidence_base = float((analysis.get("confidence") or 0.5))
+    confidence_base = float(analysis.get("confidence") or 0.5)
     return {
         "title": title,
         "summary": summary,
@@ -184,34 +187,22 @@ def _merge_article_to_event(conn, event_id, article_id):
 
 
 async def ingest():
-    """Collect articles, deduplicate them, cluster them into events, and store intelligence."""
+    """Collect free news sources, deduplicate articles, cluster events, and store intelligence."""
     articles = []
 
     for source_name, fetcher in (
-        ("GDELT", fetch_gdelt),
+        ("GDELT", lambda: fetch_gdelt(settings.gdelt_max_records)),
         ("RSS", fetch_rss),
-        ("REDDIT", fetch_reddit),
-        ("X", fetch_x),
+        ("Google News RSS", fetch_google_news),
     ):
         try:
             logger.info("[%s] Fetching articles...", source_name)
-            if source_name == "GDELT":
-                fetched = await fetcher(settings.gdelt_max_records)
-            elif source_name == "RSS":
-                fetched = await fetcher()
-            elif source_name == "REDDIT":
-                fetched = await fetcher(max_records=50)
-            else:
-                fetched = await fetcher(max_records=50)
+            fetched = await fetcher()
             articles.extend(fetched)
             logger.info("[%s] Fetched %s articles", source_name, len(fetched))
         except Exception as exc:
             logger.exception("[%s] ERROR: %s", source_name, exc)
 
-    # Hold the write lock for the whole run. Reading first and writing later in a
-    # deferred transaction can fail with "database is locked" when the RAG
-    # indexer or the retention purge writes concurrently; BEGIN IMMEDIATE makes
-    # the writer wait for the busy timeout instead of failing the request.
     with write_connection() as conn:
         existing_articles = [
             dict(row)
@@ -249,7 +240,14 @@ async def ingest():
 
             deterministic = analyze(title, description)
             classification = classify_article(article)
-            event_record = _normalize_event_record(article, {**deterministic, "category": classification["category"], "confidence": classification["confidence"]})
+            event_record = _normalize_event_record(
+                article,
+                {
+                    **deterministic,
+                    "category": classification["category"],
+                    "confidence": classification["confidence"],
+                },
+            )
 
             try:
                 logger.info("[AI] Analyzing: %s", title)
@@ -263,7 +261,9 @@ async def ingest():
                 if ai_response:
                     event_record["title"] = ai_response.get("event_title") or event_record["title"]
                     event_record["summary"] = ai_response.get("summary") or event_record["summary"]
-                    event_record["category"] = normalize_category(ai_response.get("category") or event_record["category"])
+                    event_record["category"] = normalize_category(
+                        ai_response.get("category") or event_record["category"]
+                    )
                     event_record["country"] = ai_response.get("country") or event_record["country"]
                     event_record["country_code"] = ai_response.get("country_code") or event_record["country_code"]
                     if ai_response.get("latitude") is not None:
@@ -281,7 +281,8 @@ async def ingest():
                         }
                     )
                     event_record["confidence"] = max(
-                        0.0, min(1.0, float(ai_response.get("confidence") or event_record["confidence"]))
+                        0.0,
+                        min(1.0, float(ai_response.get("confidence") or event_record["confidence"])),
                     )
             except Exception as exc:
                 logger.exception("[AI ERROR] %s", exc)
@@ -303,16 +304,18 @@ async def ingest():
                 ),
             ).lastrowid
             inserted += 1
-            existing_articles.append({
-                "id": article_id,
-                "title": title,
-                "url": url,
-                "source": source,
-                "published_at": article.get("published_at") or "",
-                "description": description,
-                "image_url": article.get("image_url"),
-                "content_hash": article_hash,
-            })
+            existing_articles.append(
+                {
+                    "id": article_id,
+                    "title": title,
+                    "url": url,
+                    "source": source,
+                    "published_at": article.get("published_at") or "",
+                    "description": description,
+                    "image_url": article.get("image_url"),
+                    "content_hash": article_hash,
+                }
+            )
 
             matching_event = find_matching_event(
                 {
@@ -327,12 +330,14 @@ async def ingest():
             if matching_event:
                 event_id = matching_event["id"]
                 _merge_article_to_event(conn, event_id, article_id)
-                event_record.update({
-                    "event_id": event_id,
-                    "title": matching_event.get("title") or event_record["title"],
-                    "summary": matching_event.get("summary") or event_record["summary"],
-                    "category": matching_event.get("category") or event_record["category"],
-                })
+                event_record.update(
+                    {
+                        "event_id": event_id,
+                        "title": matching_event.get("title") or event_record["title"],
+                        "summary": matching_event.get("summary") or event_record["summary"],
+                        "category": matching_event.get("category") or event_record["category"],
+                    }
+                )
                 conn.execute(
                     """
                     UPDATE events
@@ -383,11 +388,9 @@ async def ingest():
                     max(0.0, min(1.0, float(event_record["confidence"]))),
                     event_record["event_time"],
                     event_record["event_time"],
-                    ", ".join(
-                        [
-                            (article.get("source") or "Unknown").strip(),
-                        ]
-                    ) if (article.get("source") or "Unknown").strip() else "",
+                    ", ".join([(article.get("source") or "Unknown").strip()])
+                    if (article.get("source") or "Unknown").strip()
+                    else "",
                     event_record["event_time"],
                 ),
             ).lastrowid
@@ -400,8 +403,6 @@ async def ingest():
                 ).fetchall()
             ]
 
-        # Phase 3: index new/changed events in the background (never blocks,
-        # never fails the ingestion response).
         _schedule_rag_indexing()
         return {
             "articles_seen": len(articles),
