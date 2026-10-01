@@ -1,0 +1,123 @@
+/* =========================================================
+   PHASE 3 - GLOBAL INTELLIGENCE ASSISTANT
+   Design tokens + page shell
+
+   Every module in this folder consumes these variables, so the
+   assistant can be re-themed from one place. Load this file first.
+   ========================================================= */
+
+:root {
+  /* Spacing scale (4px base) */
+  --ai-space-1: 4px;
+  --ai-space-2: 8px;
+  --ai-space-3: 12px;
+  --ai-space-4: 16px;
+  --ai-space-5: 20px;
+  --ai-space-6: 28px;
+  --ai-space-7: 40px;
+
+  /* Radii */
+  --ai-radius-sm: 10px;
+  --ai-radius-md: 14px;
+  --ai-radius-lg: 20px;
+  --ai-radius-pill: 999px;
+
+  /* Surfaces */
+  --ai-surface: rgba(4, 15, 26, 0.72);
+  --ai-surface-raised: rgba(9, 27, 43, 0.88);
+  --ai-surface-sunken: rgba(2, 8, 16, 0.6);
+  --ai-surface-hover: rgba(14, 42, 66, 0.85);
+
+  /* Lines */
+  --ai-border: rgba(80, 145, 185, 0.18);
+  --ai-border-strong: rgba(80, 145, 185, 0.34);
+  --ai-border-dashed: rgba(80, 145, 185, 0.24);
+
+  /* Text */
+  --ai-text: #e8f3ff;
+  --ai-text-strong: #f4faff;
+  --ai-text-muted: #9fbcd0;
+  --ai-text-dim: #68899b;
+  --ai-text-faint: #4d6b7d;
+
+  /* Accents */
+  --ai-accent: #38bdf8;
+  --ai-accent-soft: rgba(56, 189, 248, 0.14);
+  --ai-accent-line: rgba(56, 189, 248, 0.45);
+  --ai-ok: #7ee7c1;
+  --ai-ok-line: rgba(52, 211, 153, 0.42);
+  --ai-ok-soft: rgba(52, 211, 153, 0.12);
+  --ai-warn: #fbbf24;
+  --ai-warn-line: rgba(251, 191, 36, 0.38);
+  --ai-warn-soft: rgba(251, 191, 36, 0.1);
+  --ai-error: #fca5a5;
+  --ai-error-line: rgba(248, 113, 113, 0.42);
+  --ai-error-soft: rgba(248, 113, 113, 0.1);
+  --ai-violet: #a78bfa;
+
+  /* Elevation + motion */
+  --ai-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --ai-shadow-md: 0 8px 24px -12px rgba(0, 0, 0, 0.7);
+  --ai-shadow-lg: 0 18px 44px -20px rgba(0, 0, 0, 0.85);
+  --ai-transition: 180ms ease;
+}
+
+.assistant-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ai-space-5);
+  animation: ai-rise 420ms ease both;
+}
+
+.assistant-page ::selection {
+  background: rgba(56, 189, 248, 0.28);
+  color: var(--ai-text-strong);
+}
+
+/* Shared scrollbar treatment for the scrollable regions in this page */
+.assistant-page ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.assistant-page ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.assistant-page ::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: var(--ai-radius-pill);
+  background: rgba(80, 145, 185, 0.35);
+  background-clip: content-box;
+}
+
+.assistant-page ::-webkit-scrollbar-thumb:hover {
+  background: rgba(56, 189, 248, 0.55);
+  background-clip: content-box;
+}
+
+@keyframes ai-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assistant-page {
+    animation: none;
+  }
+
+  .assistant-page *,
+  .assistant-page *::before,
+  .assistant-page *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

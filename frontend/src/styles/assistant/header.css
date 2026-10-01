@@ -1,0 +1,63 @@
+/* =========================================================
+   PHASE 3 - ASSISTANT - Page header
+   ========================================================= */
+
+.assistant-header {
+  position: relative;
+  padding: var(--ai-space-6) var(--ai-space-6) var(--ai-space-5);
+  border: 1px solid var(--ai-border);
+  border-radius: var(--ai-radius-lg);
+  background:
+    radial-gradient(
+      120% 140% at 100% 0%,
+      rgba(56, 189, 248, 0.16) 0%,
+      transparent 55%
+    ),
+    linear-gradient(180deg, rgba(9, 30, 48, 0.85), rgba(4, 15, 26, 0.72));
+  box-shadow: var(--ai-shadow-lg);
+  overflow: hidden;
+}
+
+/* Accent hairline along the top edge of the hero */
+.assistant-header::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    var(--ai-accent) 0%,
+    var(--ai-violet) 45%,
+    transparent 90%
+  );
+  opacity: 0.85;
+}
+
+.assistant-header .eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ai-space-2);
+  margin-bottom: var(--ai-space-3);
+  padding: 5px 10px;
+  border: 1px solid var(--ai-accent-line);
+  border-radius: var(--ai-radius-pill);
+  background: var(--ai-accent-soft);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+}
+
+.assistant-header h2 {
+  margin: 0 0 var(--ai-space-3);
+  color: var(--ai-text-strong);
+  font-size: clamp(24px, 3vw, 34px);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.assistant-subtitle {
+  max-width: 850px;
+  margin: 0;
+  color: var(--ai-text-muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
