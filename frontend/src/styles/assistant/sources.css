@@ -1,0 +1,91 @@
+/* =========================================================
+   PHASE 3 - ASSISTANT - Sources
+   Every link here is verified against the platform database.
+   ========================================================= */
+
+.assistant-sources {
+  margin-top: var(--ai-space-4);
+  padding-top: var(--ai-space-3);
+  border-top: 1px dashed var(--ai-border-dashed);
+}
+
+.assistant-sources h4 {
+  display: flex;
+  align-items: center;
+  gap: var(--ai-space-2);
+  margin: 0 0 var(--ai-space-3);
+  color: var(--ai-text-muted);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* Verified-in-database marker */
+.assistant-sources h4::after {
+  content: "\2713";
+  display: inline-grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--ai-ok-soft);
+  color: var(--ai-ok);
+  font-size: 9px;
+  letter-spacing: 0;
+}
+
+.assistant-sources ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--ai-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.assistant-sources li {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: var(--ai-space-3);
+  border: 1px solid var(--ai-border);
+  border-radius: var(--ai-radius-sm);
+  background: var(--ai-surface-sunken);
+  transition:
+    transform var(--ai-transition),
+    border-color var(--ai-transition),
+    background var(--ai-transition);
+}
+
+.assistant-sources li:hover {
+  transform: translateY(-1px);
+  border-color: var(--ai-accent-line);
+  background: var(--ai-surface-hover);
+}
+
+.assistant-sources a {
+  color: #7dd3fc;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.45;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.assistant-sources a:hover {
+  color: #bae6fd;
+  text-decoration: underline;
+}
+
+.assistant-sources a:focus-visible {
+  outline: 2px solid var(--ai-accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.assistant-sources small {
+  color: var(--ai-text-faint);
+  font-size: 10.5px;
+  line-height: 1.45;
+}

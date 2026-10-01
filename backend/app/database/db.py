@@ -1,5 +1,6 @@
 import os
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -7,10 +8,60 @@ DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "events.db"
 
+# Phase 3 indexing writes to the same SQLite file while the map/dashboard reads
+# it. In the default rollback-journal mode a writer blocks every reader (and the
+# other way round), which showed up as the whole app hanging during indexing.
+# WAL lets readers and one writer work concurrently, and the busy timeout makes
+# a contended write wait instead of failing immediately.
+BUSY_TIMEOUT_MS = 10000
+
+
 def get_connection():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=BUSY_TIMEOUT_MS / 1000)
     conn.row_factory = sqlite3.Row
+    conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
+    try:
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA synchronous = NORMAL")
+    except sqlite3.Error:
+        # A database on a filesystem without WAL support still works.
+        pass
     return conn
+
+
+@contextmanager
+def write_connection():
+    """Yield a connection that holds the write lock for the whole block.
+
+    ``sqlite3`` opens transactions in *deferred* mode: a transaction starts on
+    the first statement and only takes a lock when it first writes. A reader
+    therefore starts as a reader and later tries to *upgrade* to a writer.
+    SQLite cannot always grant that upgrade - it returns ``SQLITE_BUSY``
+    ("database is locked") immediately, and ``busy_timeout`` deliberately does
+    **not** apply to it, because waiting could deadlock.
+
+    Ingestion is the case that hits this: it reads the existing articles and
+    events, then inserts, while the RAG indexer and the retention purge are
+    writing in parallel. Acquiring the write lock up front with
+    ``BEGIN IMMEDIATE`` makes the busy timeout apply, so the writer waits for
+    the lock instead of crashing the request.
+    """
+    conn = get_connection()
+    # Take manual control of transactions so BEGIN IMMEDIATE is not fought over
+    # by the driver's implicit transaction handling.
+    conn.isolation_level = None
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        yield conn
+        conn.execute("COMMIT")
+    except Exception:
+        try:
+            conn.execute("ROLLBACK")
+        except sqlite3.Error:
+            pass
+        raise
+    finally:
+        conn.close()
 
 
 def purge_expired_events() -> int:
@@ -137,6 +188,20 @@ def init_db():
 
     CREATE INDEX IF NOT EXISTS idx_event_likes_event
         ON event_likes(event_id);
+
+    -- Phase 1/2 read paths: latest events, per-country feeds and the assistant's
+    -- filtered retrieval all sort/filter on these columns.
+    CREATE INDEX IF NOT EXISTS idx_events_event_time
+        ON events(event_time DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_events_country_time
+        ON events(country_code, event_time DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_events_category_time
+        ON events(category, event_time DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_event_articles_article
+        ON event_articles(article_id);
     """)
 
     article_columns = {

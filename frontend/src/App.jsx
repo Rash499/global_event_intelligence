@@ -16,6 +16,7 @@ import WeatherModeToggle from "./components/weather/WeatherModeToggle";
 import WeatherPanel from "./components/weather/WeatherPanel";
 import WeatherDashboard from "./components/weather/WeatherDashboard";
 import CountryMiniMap from "./components/weather/CountryMiniMap";
+import GlobalIntelligenceAssistant from "./components/assistant/GlobalIntelligenceAssistant";
 
 
 import {
@@ -53,6 +54,17 @@ import "./styles/weather/mini-map.css";
 import "./styles/weather/city-samples.css";
 import "./styles/weather/forecast-risk.css";
 import "./styles/weather/responsive.css";
+import "./styles/assistant/tokens.css";
+import "./styles/assistant/nav-button.css";
+import "./styles/assistant/header.css";
+import "./styles/assistant/status.css";
+import "./styles/assistant/suggestions.css";
+import "./styles/assistant/thread.css";
+import "./styles/assistant/reply.css";
+import "./styles/assistant/evidence.css";
+import "./styles/assistant/sources.css";
+import "./styles/assistant/composer.css";
+import "./styles/assistant/responsive.css";
 
 function getCountryCode(feature) {
   const candidates = [
@@ -122,6 +134,7 @@ function IntelligenceWorkspace({ user, onLogout }) {
   const [selectedCountry, setSelectedCountry] = useState(null);
   const [selectedWeather, setSelectedWeather] = useState(null);
   const [showGlobalDashboard, setShowGlobalDashboard] = useState(false);
+  const [showAssistant, setShowAssistant] = useState(false);
   const [mode, setMode] = useState("events");
   const [weather, setWeather] = useState([]);
   const [weatherLoading, setWeatherLoading] = useState(false);
@@ -280,6 +293,7 @@ function IntelligenceWorkspace({ user, onLogout }) {
     setSelectedCountry(null);
     setSelectedWeather(null);
     setShowGlobalDashboard(false);
+    setShowAssistant(false);
     setMode(nextMode);
   };
 
@@ -301,6 +315,14 @@ function IntelligenceWorkspace({ user, onLogout }) {
           onBack={() => setSelectedWeather(null)}
           onSelect={handleWeatherSelect}
         />
+      </main>
+    );
+  }
+
+  if (showAssistant) {
+    return (
+      <main className="app">
+        <GlobalIntelligenceAssistant onBack={() => setShowAssistant(false)} />
       </main>
     );
   }
@@ -334,14 +356,23 @@ function IntelligenceWorkspace({ user, onLogout }) {
         loading={collecting}
         user={user}
         onLogout={onLogout}
+        onOpenAssistant={() => setShowAssistant(true)}
       />
 
       <div className="mode-bar">
         <WeatherModeToggle mode={mode} onChange={handleModeChange} />
         {mode === "events" ? (
-          <button className="dashboard-button" onClick={() => setShowGlobalDashboard(true)}>
-            Open Global Event Dashboard
-          </button>
+          <>
+            <button className="dashboard-button" onClick={() => setShowGlobalDashboard(true)}>
+              Open Global Event Dashboard
+            </button>
+            <button
+              className="assistant-nav-button"
+              onClick={() => setShowAssistant(true)}
+            >
+              ✦ Global Intelligence Assistant
+            </button>
+          </>
         ) : (
           <div className="weather-source-note">Weather source: Open-Meteo · no API key</div>
         )}

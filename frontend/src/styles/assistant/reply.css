@@ -1,0 +1,156 @@
+/* =========================================================
+   PHASE 3 - ASSISTANT - Reply content
+   Role tag, grounded badge, answer typography, validation
+   warnings, platform metrics and the retrieval strip.
+   ========================================================= */
+
+.assistant-role {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ai-space-2);
+  align-items: center;
+  color: var(--ai-text-dim);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.assistant-role em {
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+
+.assistant-role .grounded.yes,
+.assistant-role .grounded.no {
+  padding: 2px 8px;
+  border-radius: var(--ai-radius-pill);
+  font-size: 9.5px;
+}
+
+.assistant-role .grounded.yes {
+  border: 1px solid var(--ai-ok-line);
+  background: var(--ai-ok-soft);
+  color: var(--ai-ok);
+}
+
+.assistant-role .grounded.no {
+  border: 1px solid var(--ai-warn-line);
+  background: var(--ai-warn-soft);
+  color: var(--ai-warn);
+}
+
+.assistant-role .model-tag {
+  padding: 2px 8px;
+  border: 1px solid var(--ai-border);
+  border-radius: var(--ai-radius-pill);
+  background: var(--ai-surface-sunken);
+  color: var(--ai-text-dim);
+  font-size: 9.5px;
+}
+
+.assistant-answer {
+  margin: var(--ai-space-3) 0 0;
+  color: #dbeaf7;
+  font-size: 13.5px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.assistant-answer strong {
+  color: var(--ai-text-strong);
+}
+
+/* --- validation warnings ------------------------------------------------ */
+
+.assistant-warnings {
+  margin: var(--ai-space-3) 0 0;
+  padding: var(--ai-space-3);
+  border: 1px solid var(--ai-warn-line);
+  border-left-width: 3px;
+  border-radius: var(--ai-radius-sm);
+  background: var(--ai-warn-soft);
+  color: #fde68a;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.assistant-warnings li {
+  margin-bottom: var(--ai-space-1);
+}
+
+.assistant-warnings li:last-child {
+  margin-bottom: 0;
+}
+
+/* --- platform metrics --------------------------------------------------- */
+
+.assistant-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ai-space-2);
+  margin-top: var(--ai-space-3);
+}
+
+.assistant-metrics span {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid var(--ai-border);
+  border-radius: var(--ai-radius-sm);
+  background: var(--ai-surface-sunken);
+  color: var(--ai-text-muted);
+  font-size: 11px;
+}
+
+.assistant-metrics strong {
+  color: var(--ai-accent);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.assistant-metrics .assistant-metrics-note {
+  border-style: dashed;
+  border-color: var(--ai-border-dashed);
+  color: var(--ai-text-faint);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* --- retrieval strip ---------------------------------------------------- */
+
+.assistant-retrieval {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ai-space-3);
+  margin-top: var(--ai-space-3);
+  padding-top: var(--ai-space-2);
+  border-top: 1px solid var(--ai-border-dashed);
+  color: var(--ai-text-faint);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.assistant-retrieval span {
+  position: relative;
+  padding-left: 12px;
+}
+
+.assistant-retrieval span::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--ai-accent);
+  transform: translateY(-50%);
+}

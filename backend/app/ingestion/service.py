@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime, timezone
 
@@ -8,7 +9,7 @@ from .x import fetch_x
 
 from ..ai.ollama import analyze_with_ollama
 from ..config import settings
-from ..database.db import get_connection
+from ..database.db import write_connection
 from ..intelligence.classification import classify_article, normalize_category
 from ..intelligence.clustering import find_matching_event
 from ..intelligence.confidence import score_event_confidence
@@ -18,6 +19,29 @@ from ..intelligence.verification import determine_corroboration_level
 from ..processing.analyzer import analyze
 
 logger = logging.getLogger(__name__)
+
+# Strong references to fire-and-forget tasks so they are not garbage collected
+# mid-flight; entries are removed when the task finishes.
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _schedule_rag_indexing():
+    """Kick off Phase 3 indexing in the background after ingestion.
+
+    Non-blocking and fail-graceful: index/embedding problems are logged inside
+    ``index_after_ingestion`` and can never break ingestion (Phases 1/2).
+    """
+    if not settings.rag_enabled:
+        return
+
+    try:
+        from ..rag.indexer import index_after_ingestion
+
+        task = asyncio.create_task(index_after_ingestion())
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
+    except Exception as exc:  # noqa: BLE001 - never block ingestion
+        logger.warning("[RAG] Could not schedule post-ingestion indexing: %s", exc)
 
 
 def _event_time_from_article(article):
@@ -184,8 +208,11 @@ async def ingest():
         except Exception as exc:
             logger.exception("[%s] ERROR: %s", source_name, exc)
 
-    conn = get_connection()
-    try:
+    # Hold the write lock for the whole run. Reading first and writing later in a
+    # deferred transaction can fail with "database is locked" when the RAG
+    # indexer or the retention purge writes concurrently; BEGIN IMMEDIATE makes
+    # the writer wait for the busy timeout instead of failing the request.
+    with write_connection() as conn:
         existing_articles = [
             dict(row)
             for row in conn.execute(
@@ -373,7 +400,9 @@ async def ingest():
                 ).fetchall()
             ]
 
-        conn.commit()
+        # Phase 3: index new/changed events in the background (never blocks,
+        # never fails the ingestion response).
+        _schedule_rag_indexing()
         return {
             "articles_seen": len(articles),
             "articles_inserted": inserted,
@@ -382,5 +411,3 @@ async def ingest():
             "ai_analyzed": ai_analyzed,
             "ai_failed": ai_failed,
         }
-    finally:
-        conn.close()

@@ -1,0 +1,62 @@
+/* =========================================================
+   PHASE 3 - ASSISTANT - Suggested questions
+   ========================================================= */
+
+.assistant-suggestions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: var(--ai-space-2);
+}
+
+.assistant-suggestions button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ai-space-3);
+  padding: 12px 15px;
+  border: 1px solid var(--ai-border);
+  border-radius: var(--ai-radius-md);
+  background: var(--ai-surface-sunken);
+  color: var(--ai-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  line-height: 1.45;
+  transition:
+    transform var(--ai-transition),
+    border-color var(--ai-transition),
+    background var(--ai-transition),
+    color var(--ai-transition),
+    box-shadow var(--ai-transition);
+}
+
+/* Chevron affordance drawn in CSS */
+.assistant-suggestions button::after {
+  content: "\2192";
+  color: var(--ai-accent);
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.55;
+  transition:
+    opacity var(--ai-transition),
+    transform var(--ai-transition);
+}
+
+.assistant-suggestions button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: var(--ai-accent-line);
+  background: var(--ai-surface-hover);
+  color: var(--ai-text-strong);
+  box-shadow: 0 10px 22px -14px rgba(56, 189, 248, 0.9);
+}
+
+.assistant-suggestions button:hover:not(:disabled)::after {
+  opacity: 1;
+  transform: translateX(3px);
+}
+
+.assistant-suggestions button:focus-visible {
+  outline: 2px solid var(--ai-accent);
+  outline-offset: 2px;
+}

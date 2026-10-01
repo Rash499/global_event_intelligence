@@ -1,0 +1,35 @@
+/* =========================================================
+   PHASE 3 - ASSISTANT - Header navigation button
+   Lives in the app header, so it cannot be scoped to the page.
+   ========================================================= */
+
+.assistant-nav-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 15px;
+  border: 1px solid rgba(167, 139, 250, 0.4);
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(30, 15, 60, 0.9), rgba(20, 10, 45, 0.8));
+  color: #ddd6fe;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  transition:
+    transform var(--ai-transition, 180ms ease),
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    color 0.2s ease;
+}
+
+.assistant-nav-button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(167, 139, 250, 0.8);
+  color: #f5f3ff;
+  box-shadow: 0 8px 20px -12px rgba(167, 139, 250, 0.9);
+}
+
+.assistant-nav-button:focus-visible {
+  outline: 2px solid var(--ai-violet, #a78bfa);
+  outline-offset: 2px;
+}
