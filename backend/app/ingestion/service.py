@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime, timezone
 
@@ -18,6 +19,29 @@ from ..intelligence.verification import determine_corroboration_level
 from ..processing.analyzer import analyze
 
 logger = logging.getLogger(__name__)
+
+# Strong references to fire-and-forget tasks so they are not garbage collected
+# mid-flight; entries are removed when the task finishes.
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _schedule_rag_indexing():
+    """Kick off Phase 3 indexing in the background after ingestion.
+
+    Non-blocking and fail-graceful: index/embedding problems are logged inside
+    ``index_after_ingestion`` and can never break ingestion (Phases 1/2).
+    """
+    if not settings.rag_enabled:
+        return
+
+    try:
+        from ..rag.indexer import index_after_ingestion
+
+        task = asyncio.create_task(index_after_ingestion())
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
+    except Exception as exc:  # noqa: BLE001 - never block ingestion
+        logger.warning("[RAG] Could not schedule post-ingestion indexing: %s", exc)
 
 
 def _event_time_from_article(article):
@@ -374,6 +398,9 @@ async def ingest():
             ]
 
         conn.commit()
+        # Phase 3: index new/changed events in the background (never blocks,
+        # never fails the ingestion response).
+        _schedule_rag_indexing()
         return {
             "articles_seen": len(articles),
             "articles_inserted": inserted,
