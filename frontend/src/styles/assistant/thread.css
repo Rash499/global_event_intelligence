@@ -1,0 +1,168 @@
+/* =========================================================
+   PHASE 3 - ASSISTANT - Conversation thread
+   Scroll region, message bubbles, empty state and the
+   pending (thinking) state.
+   ========================================================= */
+
+.assistant-thread {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ai-space-4);
+  min-height: 280px;
+  max-height: min(58vh, 620px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--ai-space-5);
+  border: 1px solid var(--ai-border);
+  border-radius: var(--ai-radius-lg);
+  background:
+    radial-gradient(
+      90% 60% at 50% 0%,
+      rgba(20, 105, 170, 0.1) 0%,
+      transparent 70%
+    ),
+    var(--ai-surface);
+  box-shadow: var(--ai-shadow-md);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(80, 145, 185, 0.4) transparent;
+}
+
+.assistant-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ai-space-2);
+  flex: 1;
+  min-height: 200px;
+  padding: var(--ai-space-7) var(--ai-space-4);
+  text-align: center;
+  color: var(--ai-text-dim);
+}
+
+.assistant-empty strong {
+  color: var(--ai-text);
+  font-size: 14px;
+  letter-spacing: 0.01em;
+}
+
+.assistant-empty span {
+  max-width: 420px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* --- message bubbles ---------------------------------------------------- */
+
+.assistant-message {
+  position: relative;
+  max-width: 92%;
+  padding: var(--ai-space-4);
+  border: 1px solid var(--ai-border);
+  border-radius: var(--ai-radius-md);
+  background: var(--ai-surface-raised);
+  box-shadow: var(--ai-shadow-sm);
+  animation: ai-message-in 260ms ease both;
+}
+
+.assistant-message.user {
+  align-self: flex-end;
+  max-width: 78%;
+  border-color: var(--ai-accent-line);
+  background: linear-gradient(135deg, rgba(11, 109, 161, 0.4), rgba(7, 80, 120, 0.28));
+}
+
+/* Corner notch so the speaker is obvious without an avatar element */
+.assistant-message.user::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 14px;
+  height: 14px;
+  background: linear-gradient(225deg, rgba(11, 109, 161, 0.95) 50%, transparent 50%);
+  border-bottom-right-radius: var(--ai-radius-md);
+}
+
+.assistant-message.user p {
+  margin: var(--ai-space-2) 0 0;
+  color: var(--ai-text-strong);
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.assistant-message.assistant {
+  align-self: flex-start;
+  padding-left: calc(var(--ai-space-4) + 4px);
+  border-left: 3px solid var(--ai-border-strong);
+}
+
+.assistant-message.assistant.tone-ok {
+  border-left-color: var(--ai-ok);
+}
+
+.assistant-message.assistant.tone-warn {
+  border-left-color: var(--ai-warn);
+  background: linear-gradient(180deg, var(--ai-warn-soft), transparent 40%), var(--ai-surface-raised);
+}
+
+.assistant-message.assistant.tone-error {
+  border-left-color: var(--ai-error);
+  background: linear-gradient(180deg, var(--ai-error-soft), transparent 40%), var(--ai-surface-raised);
+}
+
+/* --- pending state ------------------------------------------------------ */
+
+.assistant-message.pending {
+  align-self: flex-start;
+  border-style: dashed;
+  border-left: 3px solid var(--ai-accent-line);
+  background: var(--ai-surface-sunken);
+  color: var(--ai-text-muted);
+}
+
+.assistant-message.pending p {
+  margin: var(--ai-space-2) 0 0;
+  font-size: 12px;
+}
+
+/* Three-dot thinking indicator */
+.assistant-message.pending p::after {
+  content: "";
+  display: inline-block;
+  width: 1.6em;
+  text-align: left;
+  color: var(--ai-accent);
+  animation: ai-dots 1.2s steps(4, end) infinite;
+}
+
+@keyframes ai-message-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes ai-dots {
+  0% {
+    content: "";
+  }
+
+  25% {
+    content: ".";
+  }
+
+  50% {
+    content: "..";
+  }
+
+  75% {
+    content: "...";
+  }
+}
