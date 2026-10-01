@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from .ai import router as ai_router
 from .auth import router as auth_router
 from .countries import router as countries_router
 from .events import router as events_router
@@ -18,3 +19,4 @@ router.include_router(countries_router)
 router.include_router(statistics_router)
 router.include_router(ingestion_router)
 router.include_router(interactions_router)
+router.include_router(ai_router)
