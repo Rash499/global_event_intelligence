@@ -1,9 +1,10 @@
 import asyncio
 import logging
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .config import settings
 from .database.db import init_db, purge_expired_events
@@ -25,6 +26,62 @@ app = FastAPI(
 )
 
 
+class ErrorResponseMiddleware:
+    """Return a JSON 500 for unhandled errors *without* losing CORS headers.
+
+    Starlette renders unhandled exceptions in ``ServerErrorMiddleware``, which
+    sits **outside** every user middleware - including ``CORSMiddleware``. A
+    handler registered with ``@app.exception_handler(Exception)`` therefore
+    produces a 500 that never passes through CORS, and the browser reports it
+    as ``No 'Access-Control-Allow-Origin' header is present`` even though CORS
+    is configured correctly.
+
+    Wrapping the exception in an ASGI middleware keeps the response *inside* the
+    CORS layer, so failures reach the browser as readable JSON. The real
+    traceback is still logged server side and never sent to the client.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        response_started = False
+
+        async def send_wrapper(message: Message) -> None:
+            nonlocal response_started
+            if message["type"] == "http.response.start":
+                response_started = True
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_wrapper)
+        except Exception:
+            # Once the response has started we can no longer change the status
+            # code, so let the error propagate to the server.
+            if response_started:
+                raise
+
+            logger.exception(
+                "Unhandled error while handling %s %s",
+                scope.get("method", "?"),
+                scope.get("path", "?"),
+            )
+            response = JSONResponse(
+                status_code=500,
+                content={"detail": "Internal server error. Check the backend logs."},
+            )
+            await response(scope, receive, send)
+
+
+# Register the error middleware FIRST and CORS SECOND. Starlette applies user
+# middleware in reverse registration order, so CORSMiddleware ends up on the
+# outside and adds its headers to the 500 responses produced above.
+app.add_middleware(ErrorResponseMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -35,23 +92,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.exception_handler(Exception)
-async def unhandled_exception_handler(request: Request, exc: Exception):
-    """Return a JSON 500 instead of letting the error escape the CORS middleware.
-
-    Starlette renders unhandled exceptions outside ``CORSMiddleware``, so the
-    browser reports them as CORS failures. Handling them here keeps the CORS
-    headers on the response and logs the real traceback server side.
-    """
-    logger.exception(
-        "Unhandled error while handling %s %s", request.method, request.url.path
-    )
-    return JSONResponse(
-        status_code=500,
-        content={"detail": "Internal server error. Check the backend logs."},
-    )
 
 
 async def _purge_expired_events_periodically():
