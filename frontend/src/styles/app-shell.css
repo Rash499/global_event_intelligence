@@ -471,3 +471,282 @@ body {
   from { opacity: 0; transform: translateY(10px) scale(.995); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
+
+
+/* Dashboard experience layer — visual polish + interaction */
+.global-dashboard,
+.assistant-page,
+.weather-brief-page,
+.country-dashboard {
+  position: relative;
+}
+
+.global-dashboard::before,
+.assistant-page::before,
+.weather-brief-page::before,
+.country-dashboard::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 18% 28%, rgba(66, 201, 255, 0.055), transparent 25%),
+    radial-gradient(circle at 82% 62%, rgba(139, 124, 255, 0.045), transparent 28%);
+}
+
+.global-dashboard > *,
+.assistant-page > *,
+.weather-brief-page > *,
+.country-dashboard > * {
+  animation: dashboardReveal 520ms cubic-bezier(.2,.8,.2,1) both;
+}
+
+.global-dashboard .analytics-panel,
+.global-dashboard .dashboard-pulse,
+.global-dashboard .global-dashboard-filters,
+.global-dashboard .event-results,
+.global-dashboard .global-dashboard-header,
+.country-dashboard .country-dashboard-panel,
+.country-dashboard .country-event-panel,
+.weather-brief-page .weather-section,
+.weather-brief-page .brief-side > *,
+.assistant-page .assistant-status,
+.assistant-page .assistant-suggestions,
+.assistant-page .assistant-thread,
+.assistant-page .assistant-composer {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(91, 168, 214, 0.16);
+  border-radius: 18px;
+  background:
+    linear-gradient(145deg, rgba(10, 27, 44, 0.88), rgba(4, 14, 25, 0.76));
+  box-shadow:
+    0 20px 55px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.025);
+  backdrop-filter: blur(16px);
+}
+
+.global-dashboard .analytics-panel::before,
+.global-dashboard .dashboard-pulse::before,
+.weather-brief-page .weather-section::before,
+.country-dashboard .country-dashboard-panel::before,
+.assistant-page .assistant-thread::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 8%;
+  right: 8%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(66, 201, 255, 0.6), transparent);
+  opacity: .7;
+  pointer-events: none;
+}
+
+.global-dashboard .analytics-panel,
+.weather-brief-page .weather-section,
+.country-dashboard .country-dashboard-panel,
+.assistant-page .assistant-status,
+.assistant-page .assistant-suggestions {
+  transition:
+    transform 220ms ease,
+    border-color 220ms ease,
+    box-shadow 220ms ease;
+}
+
+.global-dashboard .analytics-panel:hover,
+.weather-brief-page .weather-section:hover,
+.country-dashboard .country-dashboard-panel:hover,
+.assistant-page .assistant-status:hover,
+.assistant-page .assistant-suggestions:hover {
+  transform: translateY(-3px);
+  border-color: rgba(66, 201, 255, 0.28);
+  box-shadow:
+    0 24px 65px rgba(0, 0, 0, 0.28),
+    0 0 35px rgba(66, 201, 255, 0.045);
+}
+
+.global-dashboard .panel-header,
+.weather-brief-page .weather-section-heading,
+.country-dashboard .dashboard-header {
+  position: relative;
+}
+
+.global-dashboard .timeline-point,
+.global-dashboard .category-row {
+  transition: transform 180ms ease, opacity 180ms ease;
+}
+
+.global-dashboard .timeline-point:hover,
+.global-dashboard .category-row:hover {
+  transform: translateY(-3px);
+}
+
+.global-dashboard .timeline-point:hover .timeline-bar {
+  filter: brightness(1.25);
+  box-shadow: 0 0 18px rgba(66, 201, 255, 0.35);
+}
+
+.global-dashboard .category-row:hover .category-bar-track span {
+  box-shadow: 0 0 16px rgba(66, 201, 255, 0.35);
+}
+
+.global-dashboard button,
+.global-dashboard select,
+.global-dashboard input,
+.country-dashboard button,
+.weather-brief-page button,
+.weather-brief-page select,
+.assistant-page button,
+.assistant-page input {
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.global-dashboard button:hover:not(:disabled),
+.country-dashboard button:hover:not(:disabled),
+.weather-brief-page button:hover:not(:disabled),
+.assistant-page button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.global-dashboard button:focus-visible,
+.country-dashboard button:focus-visible,
+.weather-brief-page button:focus-visible,
+.assistant-page button:focus-visible,
+.global-dashboard select:focus-visible,
+.weather-brief-page select:focus-visible,
+.assistant-page input:focus-visible {
+  outline: 2px solid rgba(66, 201, 255, 0.65);
+  outline-offset: 2px;
+  box-shadow: 0 0 22px rgba(66, 201, 255, 0.12);
+}
+
+.assistant-page .assistant-header {
+  position: relative;
+  padding: 30px;
+  border: 1px solid rgba(91, 168, 214, 0.12);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 90% 10%, rgba(139, 124, 255, 0.13), transparent 30%),
+    linear-gradient(135deg, rgba(10, 29, 47, 0.86), rgba(4, 13, 24, 0.78));
+  box-shadow: 0 22px 65px rgba(0,0,0,.22);
+}
+
+.assistant-page .assistant-header::after {
+  content: "RAG";
+  position: absolute;
+  top: 24px;
+  right: 26px;
+  padding: 7px 10px;
+  border: 1px solid rgba(139, 124, 255, 0.3);
+  border-radius: 999px;
+  color: #a99fff;
+  background: rgba(139, 124, 255, 0.07);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .16em;
+}
+
+.assistant-page .assistant-suggestions button {
+  border-color: rgba(66, 201, 255, 0.16);
+  background: rgba(8, 24, 40, 0.74);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
+}
+
+.assistant-page .assistant-suggestions button:hover:not(:disabled) {
+  border-color: rgba(66, 201, 255, 0.45);
+  background: rgba(16, 52, 75, 0.8);
+  box-shadow: 0 0 24px rgba(66, 201, 255, 0.08);
+}
+
+.assistant-page .assistant-composer {
+  position: sticky;
+  bottom: 16px;
+  z-index: 20;
+  padding: 8px;
+  box-shadow: 0 18px 55px rgba(0,0,0,.38);
+}
+
+.assistant-page .assistant-composer input {
+  background: rgba(2, 10, 18, 0.68);
+}
+
+.assistant-page .assistant-composer button {
+  min-width: 88px;
+  background: linear-gradient(135deg, rgba(25, 139, 194, .9), rgba(91, 72, 185, .9));
+  border-color: rgba(113, 213, 255, .35);
+}
+
+.weather-brief-page .weather-score,
+.weather-brief-page .forecast-risk {
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.weather-brief-page .weather-score:hover,
+.weather-brief-page .forecast-risk:hover {
+  transform: scale(1.04);
+}
+
+.weather-brief-page .forecast-card,
+.weather-brief-page .compare-row,
+.weather-brief-page .city-card,
+.weather-brief-page .weather-mode-toggle button {
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.weather-brief-page .forecast-card:hover,
+.weather-brief-page .compare-row:hover,
+.weather-brief-page .city-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(66, 201, 255, 0.32);
+  box-shadow: 0 14px 35px rgba(0,0,0,.22), 0 0 22px rgba(66,201,255,.05);
+}
+
+.country-dashboard .country-event-map,
+.country-dashboard .country-map,
+.country-dashboard svg {
+  transition: filter 250ms ease;
+}
+
+.country-dashboard .country-event-map:hover {
+  filter: saturate(1.08) brightness(1.03);
+}
+
+.country-dashboard .event-list > *,
+.global-dashboard .event-results > *,
+.weather-brief-page .forecast-list > *,
+.weather-brief-page .compare-list > * {
+  animation: itemReveal 420ms ease both;
+}
+
+@keyframes dashboardReveal {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes itemReveal {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .global-dashboard > *,
+  .assistant-page > *,
+  .weather-brief-page > *,
+  .country-dashboard > *,
+  .global-dashboard .event-results > *,
+  .weather-brief-page .forecast-list > *,
+  .weather-brief-page .compare-list > * {
+    animation: none !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .assistant-page .assistant-header { padding: 22px; }
+  .assistant-page .assistant-header::after { display: none; }
+  .assistant-page .assistant-composer { bottom: 8px; }
+}
