@@ -54,5 +54,16 @@ export default function Globe({
     selectedCountryCode,
   });
 
-  return <div ref={containerRef} className="globe" />;
+  return (
+    <div className="globe-stage">
+      <div ref={containerRef} className="globe" />
+      <div className="globe-interaction-hint" aria-hidden="true">
+        <span>✦</span>
+        <div>
+          <strong>EXPLORE THE GLOBE</strong>
+          <small>Drag to rotate · Scroll to zoom · Click a marker</small>
+        </div>
+      </div>
+    </div>
+  );
 }
