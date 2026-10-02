@@ -22,7 +22,6 @@ export function useGlobeInit(containerRef, globeRef) {
       .atmosphereColor("#39c8ff")
       .atmosphereAltitude(0.18)
       .showGraticules(true)
-      .graticuleColor(() => "rgba(90, 190, 255, 0.12)")
       .pointsMerge(false)
       .enablePointerInteraction(true);
 
