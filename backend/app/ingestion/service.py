@@ -190,18 +190,31 @@ async def ingest():
     """Collect free news sources, deduplicate articles, cluster events, and store intelligence."""
     articles = []
 
-    for source_name, fetcher in (
-        ("GDELT", lambda: fetch_gdelt(settings.gdelt_max_records)),
-        ("RSS", fetch_rss),
-        ("Google News RSS", fetch_google_news),
-    ):
-        try:
-            logger.info("[%s] Fetching articles...", source_name)
-            fetched = await fetcher()
-            articles.extend(fetched)
-            logger.info("[%s] Fetched %s articles", source_name, len(fetched))
-        except Exception as exc:
-            logger.exception("[%s] ERROR: %s", source_name, exc)
+    # Fetch all sources concurrently. The old sequential implementation waited
+    # for every feed before moving to the next one, making a slow/unreachable
+    # feed block the entire collection cycle.
+    source_tasks = (
+        ("GDELT", fetch_gdelt(settings.gdelt_max_records)),
+        ("RSS", fetch_rss()),
+        ("Google News RSS", fetch_google_news()),
+    )
+    fetched_sources = await asyncio.gather(
+        *(task for _, task in source_tasks),
+        return_exceptions=True,
+    )
+    for (source_name, _), fetched in zip(source_tasks, fetched_sources):
+        if isinstance(fetched, Exception):
+            logger.error("[%s] ERROR: %s", source_name, fetched)
+            continue
+        logger.info("[%s] Fetched %s articles", source_name, len(fetched))
+        articles.extend(fetched)
+
+    # Keep one collection cycle bounded. News feeds can return hundreds of
+    # records, while each record still requires database work and optional AI
+    # analysis. A small bounded batch keeps the UI responsive.
+    max_articles = 60
+    articles = articles[:max_articles]
+    logger.info("[INGESTION] Processing %s articles", len(articles))
 
     with write_connection() as conn:
         existing_articles = [
@@ -250,14 +263,19 @@ async def ingest():
             )
 
             try:
-                logger.info("[AI] Analyzing: %s", title)
-                ai_response = await analyze_with_ollama(
-                    title=title,
-                    description=description,
-                    source=source,
-                    url=url,
-                )
-                ai_analyzed += 1
+                # AI enrichment is optional. Do not contact Ollama when it is
+                # disabled/unavailable; deterministic classification still
+                # produces a usable event.
+                ai_response = None
+                if settings.ollama_enabled:
+                    logger.info("[AI] Analyzing: %s", title)
+                    ai_response = await analyze_with_ollama(
+                        title=title,
+                        description=description,
+                        source=source,
+                        url=url,
+                    )
+                    ai_analyzed += 1
                 if ai_response:
                     event_record["title"] = ai_response.get("event_title") or event_record["title"]
                     event_record["summary"] = ai_response.get("summary") or event_record["summary"]

@@ -13,7 +13,7 @@ DB_PATH = DATA_DIR / "events.db"
 # other way round), which showed up as the whole app hanging during indexing.
 # WAL lets readers and one writer work concurrently, and the busy timeout makes
 # a contended write wait instead of failing immediately.
-BUSY_TIMEOUT_MS = 10000
+BUSY_TIMEOUT_MS = 30000
 
 
 def get_connection():
@@ -65,9 +65,13 @@ def write_connection():
 
 
 def purge_expired_events() -> int:
+    # Use the same write-lock strategy as ingestion so retention cleanup waits
+    # for another writer instead of failing with SQLITE_BUSY.
     conn = get_connection()
+    conn.isolation_level = None
 
     try:
+        conn.execute("BEGIN IMMEDIATE")
         expired_ids = [
             row["id"]
             for row in conn.execute(
@@ -101,8 +105,14 @@ def purge_expired_events() -> int:
             f"DELETE FROM events WHERE id IN ({placeholders})",
             expired_ids,
         )
-        conn.commit()
+        conn.execute("COMMIT")
         return len(expired_ids)
+    except Exception:
+        try:
+            conn.execute("ROLLBACK")
+        except sqlite3.Error:
+            pass
+        raise
     finally:
         conn.close()
 

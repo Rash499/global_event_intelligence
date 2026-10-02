@@ -17,8 +17,8 @@ export function useEventRings({ globeRef, events }) {
       .ringLat("latitude")
       .ringLng("longitude")
       .ringColor(getRingColor)
-      .ringMaxRadius((event) => 2 + event.importance * 0.35)
-      .ringPropagationSpeed(1.5)
-      .ringRepeatPeriod(1400);
+      .ringMaxRadius((event) => 1.8 + event.importance * 0.28)
+      .ringPropagationSpeed(1.15)
+      .ringRepeatPeriod(1200);
   }, [globeRef, events]);
 }
