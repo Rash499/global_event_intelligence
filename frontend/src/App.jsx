@@ -361,7 +361,7 @@ function IntelligenceWorkspace({ user, onLogout }) {
 
   if (selectedCountry) {
     return chrome(
-      <main className="app-page">
+      <main className="app app-page">
         <CountryDashboard country={selectedCountry} onBack={goOverview} />
       </main>
     );
@@ -383,7 +383,7 @@ function IntelligenceWorkspace({ user, onLogout }) {
 
   if (showAssistant) {
     return chrome(
-      <main className="app-page">
+      <main className="app app-page">
         <GlobalIntelligenceAssistant onBack={goOverview} />
       </main>
     );
@@ -391,7 +391,7 @@ function IntelligenceWorkspace({ user, onLogout }) {
 
   if (showGlobalDashboard) {
     return chrome(
-      <main className="app-page">
+      <main className="app app-page">
         <div className="dashboard-navigation">
           <button className="back-button" onClick={goOverview}>
             ← Back to World Map
@@ -404,14 +404,14 @@ function IntelligenceWorkspace({ user, onLogout }) {
 
   if (selectedEvent) {
     return chrome(
-      <main className="app-page">
+      <main className="app app-page">
         <EventDetails event={selectedEvent} onBack={() => setSelectedEvent(null)} />
       </main>
     );
   }
 
   return chrome(
-    <main className="app-page">
+    <main className="app app-page">
       <AlertToast message={eventAlert} onDismiss={dismissEventAlert} />
 
       <section className="hero-header">
