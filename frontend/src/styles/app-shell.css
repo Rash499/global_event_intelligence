@@ -435,3 +435,39 @@ body {
 
   .hero-status { width: 100%; }
 }
+
+.app-page {
+  animation: pageIn 420ms cubic-bezier(.2,.8,.2,1) both;
+}
+
+.event-card {
+  border-color: rgba(85, 156, 201, 0.14);
+  background: linear-gradient(145deg, rgba(8, 23, 38, 0.92), rgba(5, 14, 25, 0.82));
+  box-shadow: 0 12px 38px rgba(0, 0, 0, 0.18);
+  transition: transform 220ms ease, border-color 220ms ease, box-shadow 220ms ease;
+}
+
+.event-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(66, 201, 255, 0.32);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28), 0 0 28px rgba(66, 201, 255, 0.05);
+}
+
+.event-card-media img {
+  transition: transform 450ms cubic-bezier(.2,.8,.2,1), filter 450ms ease;
+}
+
+.event-card:hover .event-card-media img {
+  transform: scale(1.035);
+  filter: saturate(1.08);
+}
+
+.assistant-page,
+.weather-brief-page {
+  animation: pageIn 420ms cubic-bezier(.2,.8,.2,1) both;
+}
+
+@keyframes pageIn {
+  from { opacity: 0; transform: translateY(10px) scale(.995); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
