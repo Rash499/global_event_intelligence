@@ -5,7 +5,8 @@ import AlertToast from "./components/AlertToast";
 import AuthLanding from "./components/auth/AuthLanding";
 import { useAuth } from "./components/auth/AuthContext";
 import { InteractionProvider } from "./components/interactions/InteractionProvider";
-import Header from "./components/Header";
+import Navbar from "./components/Navbar";
+import Footer from "./components/Footer";
 import StatsBar from "./components/StatsBar";
 import CategoryFilter from "./components/CategoryFilter";
 import EventList from "./components/EventList";
@@ -65,6 +66,7 @@ import "./styles/assistant/evidence.css";
 import "./styles/assistant/sources.css";
 import "./styles/assistant/composer.css";
 import "./styles/assistant/responsive.css";
+import "./styles/app-shell.css";
 
 function getCountryCode(feature) {
   const candidates = [
@@ -297,17 +299,77 @@ function IntelligenceWorkspace({ user, onLogout }) {
     setMode(nextMode);
   };
 
+    const goOverview = () => {
+    setSelectedEvent(null);
+    setSelectedCountry(null);
+    setSelectedWeather(null);
+    setShowGlobalDashboard(false);
+    setShowAssistant(false);
+    setMode("events");
+  };
+
+  const goDashboard = () => {
+    setSelectedEvent(null);
+    setSelectedCountry(null);
+    setSelectedWeather(null);
+    setShowAssistant(false);
+    setShowGlobalDashboard(true);
+  };
+
+  const goWeather = () => {
+    setSelectedEvent(null);
+    setSelectedCountry(null);
+    setSelectedWeather(null);
+    setShowGlobalDashboard(false);
+    setShowAssistant(false);
+    setMode("weather");
+  };
+
+  const goAssistant = () => {
+    setSelectedEvent(null);
+    setSelectedCountry(null);
+    setSelectedWeather(null);
+    setShowGlobalDashboard(false);
+    setShowAssistant(true);
+  };
+
+  const activeView = showAssistant
+    ? "assistant"
+    : showGlobalDashboard
+      ? "dashboard"
+      : mode === "weather" || selectedWeather
+        ? "weather"
+        : "overview";
+
+  const chrome = (page) => (
+    <>
+      <Navbar
+        activeView={activeView}
+        onOverview={goOverview}
+        onDashboard={goDashboard}
+        onWeather={goWeather}
+        onAssistant={goAssistant}
+        onCollect={handleCollect}
+        collecting={collecting}
+        user={user}
+        onLogout={onLogout}
+      />
+      {page}
+      <Footer />
+    </>
+  );
+
   if (selectedCountry) {
-    return (
-      <main className="app">
-        <CountryDashboard country={selectedCountry} onBack={() => setSelectedCountry(null)} />
+    return chrome(
+      <main className="app-page">
+        <CountryDashboard country={selectedCountry} onBack={goOverview} />
       </main>
     );
   }
 
   if (selectedWeather) {
-    return (
-      <main className="app weather-brief-page">
+    return chrome(
+      <main className="app-page weather-brief-page">
         <WeatherDashboard
           weather={selectedWeather}
           weatherList={weather}
@@ -320,18 +382,18 @@ function IntelligenceWorkspace({ user, onLogout }) {
   }
 
   if (showAssistant) {
-    return (
-      <main className="app">
-        <GlobalIntelligenceAssistant onBack={() => setShowAssistant(false)} />
+    return chrome(
+      <main className="app-page">
+        <GlobalIntelligenceAssistant onBack={goOverview} />
       </main>
     );
   }
 
   if (showGlobalDashboard) {
-    return (
-      <main className="app">
+    return chrome(
+      <main className="app-page">
         <div className="dashboard-navigation">
-          <button className="back-button" onClick={() => setShowGlobalDashboard(false)}>
+          <button className="back-button" onClick={goOverview}>
             ← Back to World Map
           </button>
         </div>
@@ -341,35 +403,39 @@ function IntelligenceWorkspace({ user, onLogout }) {
   }
 
   if (selectedEvent) {
-    return (
-      <main className="app">
+    return chrome(
+      <main className="app-page">
         <EventDetails event={selectedEvent} onBack={() => setSelectedEvent(null)} />
       </main>
     );
   }
 
-  return (
-    <main className="app">
+  return chrome(
+    <main className="app-page">
       <AlertToast message={eventAlert} onDismiss={dismissEventAlert} />
-      <Header
-        onCollect={handleCollect}
-        loading={collecting}
-        user={user}
-        onLogout={onLogout}
-        onOpenAssistant={() => setShowAssistant(true)}
-      />
+
+      <section className="hero-header">
+        <div>
+          <p className="eyebrow">GLOBAL EVENT INTELLIGENCE</p>
+          <h1>World Event Map</h1>
+          <p className="subtitle">
+            Monitor important events, emerging signals and global conditions in one live workspace.
+          </p>
+        </div>
+        <div className="hero-status">
+          <span><i /> LIVE FEED</span>
+          <small>Multi-source monitoring · Global coverage</small>
+        </div>
+      </section>
 
       <div className="mode-bar">
         <WeatherModeToggle mode={mode} onChange={handleModeChange} />
         {mode === "events" ? (
           <>
-            <button className="dashboard-button" onClick={() => setShowGlobalDashboard(true)}>
+            <button className="dashboard-button" onClick={goDashboard}>
               Open Global Event Dashboard
             </button>
-            <button
-              className="assistant-nav-button"
-              onClick={() => setShowAssistant(true)}
-            >
+            <button className="assistant-nav-button" onClick={goAssistant}>
               ✦ Global Intelligence Assistant
             </button>
           </>
@@ -440,7 +506,6 @@ function IntelligenceWorkspace({ user, onLogout }) {
       </section>
     </main>
   );
-}
 
 export default function App() {
   const { user, loading, logout } = useAuth();
