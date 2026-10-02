@@ -204,7 +204,7 @@ async def ingest():
     )
     for (source_name, _), fetched in zip(source_tasks, fetched_sources):
         if isinstance(fetched, Exception):
-            logger.exception("[%s] ERROR: %s", source_name, fetched)
+            logger.error("[%s] ERROR: %s", source_name, fetched)
             continue
         logger.info("[%s] Fetched %s articles", source_name, len(fetched))
         articles.extend(fetched)
