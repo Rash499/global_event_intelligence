@@ -506,6 +506,7 @@ function IntelligenceWorkspace({ user, onLogout }) {
       </section>
     </main>
   );
+}
 
 export default function App() {
   const { user, loading, logout } = useAuth();
