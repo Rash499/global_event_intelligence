@@ -232,10 +232,12 @@ function IntelligenceWorkspace({ user, onLogout }) {
       );
     } catch (error) {
       console.error(error);
+      const detail = error?.response?.data?.detail;
       setStatus(
-        automatic
-          ? "Automatic news collection failed. Check the backend connection."
-          : "News collection failed. Check the backend connection."
+        detail ||
+          (automatic
+            ? "Automatic news collection failed. Check the backend logs."
+            : "News collection failed. Check the backend logs.")
       );
     } finally {
       setCollecting(false);
@@ -250,8 +252,9 @@ function IntelligenceWorkspace({ user, onLogout }) {
     automaticCollectionStarted.current = true;
 
     const initializeFeed = async () => {
+      // Loading existing data should never force a network ingestion cycle.
+      // Users can explicitly refresh from the navbar when they want collection.
       await loadEvents();
-      await collectEvents(true);
     };
 
     initializeFeed();
