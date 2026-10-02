@@ -4,7 +4,6 @@ import { formatRelativeTime } from "../services/dateFormat.jsx";
 import EventComments from "./interactions/EventComments";
 import EventInteractionBar from "./interactions/EventInteractionBar";
 import { useEventInteractions } from "./interactions/InteractionProvider";
-import { getEventImage } from "../services/api.jsx";
 
 const severityIcons = {
   critical: "!",
@@ -40,20 +39,7 @@ export default function EventCard({ event, variant = "grid", onSelect }) {
   useEffect(() => {
     setImageUrl(event.image_url || "");
     setImageFailed(false);
-
-    if (variant !== "grid" || event.image_url) return undefined;
-
-    let active = true;
-    getEventImage(event.id)
-      .then((data) => {
-        if (active && data.image_url) setImageUrl(data.image_url);
-      })
-      .catch(() => {});
-
-    return () => {
-      active = false;
-    };
-  }, [event.id, event.image_url, variant]);
+  }, [event.id, event.image_url]);
 
   useEffect(() => {
     syncEvent(event);
