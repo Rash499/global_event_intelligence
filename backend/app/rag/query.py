@@ -315,7 +315,7 @@ def detect_time_range(normalized: str) -> tuple[str | None, str | None, str | No
     def iso(moment: datetime) -> str:
         return moment.astimezone(timezone.utc).isoformat()
 
-    since = re.search(r"\b(since|after)\s+(\d{4}-\d{2}-\d{2})", normalized)
+    between = re.search(r"\bbetween\s+(\d{4}-\d{2}-\d{2})\s+and\s+(\d{4}-\d{2}-\d{2})\b", normalized)\n    if between:\n        try:\n            start = datetime.fromisoformat(between.group(1)).replace(tzinfo=timezone.utc)\n            end = datetime.fromisoformat(between.group(2)).replace(tzinfo=timezone.utc) + timedelta(days=1)\n            return iso(start), iso(end), f"between {between.group(1)} and {between.group(2)}"\n        except ValueError:\n            pass\n\n    if re.search(r"\blast 24 hours?\b|\bprevious 24 hours?\b", normalized):\n        return iso(now - timedelta(hours=24)), None, "last 24 hours"\n\n    since = re.search(r"\b(since|after)\s+(\d{4}-\d{2}-\d{2})", normalized)
     if since:
         try:
             start = datetime.fromisoformat(since.group(2)).replace(tzinfo=timezone.utc)
