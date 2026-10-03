@@ -3,6 +3,8 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
+from ..config import settings
+
 BASE_DIR = Path(__file__).resolve().parents[2]
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -64,7 +66,7 @@ def write_connection():
         conn.close()
 
 
-HISTORICAL_RETENTION_DAYS = 365
+HISTORICAL_RETENTION_DAYS = max(30, settings.historical_retention_days)
 
 
 def purge_expired_events() -> int:
@@ -89,8 +91,9 @@ def purge_expired_events() -> int:
                         THEN created_at
                         ELSE event_time
                     END
-                ) < julianday('now', '-365 days')
-                """
+                ) < julianday('now', '-' || ? || ' days')
+                """,
+                (HISTORICAL_RETENTION_DAYS,),
             ).fetchall()
         ]
 
