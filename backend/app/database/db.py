@@ -89,7 +89,7 @@ def purge_expired_events() -> int:
                         THEN created_at
                         ELSE event_time
                     END
-                ) < julianday('now', ? || ' days')
+                ) < julianday('now', '-365 days')
                 """
             ).fetchall()
         ]
