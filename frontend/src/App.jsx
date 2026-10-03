@@ -350,6 +350,7 @@ function IntelligenceWorkspace({ user, onLogout }) {
     setSelectedCountry(null);
     setSelectedWeather(null);
     setShowGlobalDashboard(false);
+    setShowHistorical(false);
     setShowAssistant(true);
   };
 
@@ -370,7 +371,6 @@ function IntelligenceWorkspace({ user, onLogout }) {
         onOverview={goOverview}
         onDashboard={goDashboard}
         onWeather={goWeather}
-        onAssistant={goAssistant}
         onAssistant={goAssistant}
         onCollect={handleCollect}
         collecting={collecting}
