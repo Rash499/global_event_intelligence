@@ -113,6 +113,7 @@ TREND_INTENT_PATTERNS = [
     r"\bover the (last|past)\b",
     r"\btimeline\b",
     r"\bhistory of (event|activity|reporting)\b",
+    r"\bwhat changed\b",
     r"\bincrease(d|s)? or decrease(d|s)?\b",
 ]
 
@@ -313,6 +314,18 @@ def detect_time_range(normalized: str) -> tuple[str | None, str | None, str | No
 
     def iso(moment: datetime) -> str:
         return moment.astimezone(timezone.utc).isoformat()
+
+    between = re.search(r"\bbetween\s+(\d{4}-\d{2}-\d{2})\s+and\s+(\d{4}-\d{2}-\d{2})\b", normalized)
+    if between:
+        try:
+            start = datetime.fromisoformat(between.group(1)).replace(tzinfo=timezone.utc)
+            end = datetime.fromisoformat(between.group(2)).replace(tzinfo=timezone.utc) + timedelta(days=1)
+            return iso(start), iso(end), f"between {between.group(1)} and {between.group(2)}"
+        except ValueError:
+            pass
+
+    if re.search(r"\blast 24 hours?\b|\bprevious 24 hours?\b", normalized):
+        return iso(now - timedelta(hours=24)), None, "last 24 hours"
 
     since = re.search(r"\b(since|after)\s+(\d{4}-\d{2}-\d{2})", normalized)
     if since:

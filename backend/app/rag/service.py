@@ -572,6 +572,10 @@ async def status(config: Settings | None = None, force: bool = False) -> AiStatu
 
 
 STATIC_SUGGESTIONS = [
+    QuestionSuggestion(id="historical-changes", label="What changed this week?", question="What changed globally this week?"),
+    QuestionSuggestion(id="event-evolution", label="How did an event develop?", question="How did this event develop over the last 7 days?"),
+    QuestionSuggestion(id="historical-conflicts", label="Show conflicting reports", question="Which events had conflicting reports this week?"),
+
     QuestionSuggestion(
         id="latest",
         label="What are the latest major events?",

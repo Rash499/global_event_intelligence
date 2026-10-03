@@ -399,3 +399,31 @@ global-event-intelligence/
 - AI output is an analysis layer and should not be treated as verified fact without source review.
 
 
+
+
+## Phase 4 — Historical Intelligence
+
+The platform now includes an evidence-based historical layer built on the existing events and articles.
+
+### Historical APIs
+
+- GET /api/intelligence/history
+- GET /api/intelligence/trends
+- GET /api/intelligence/categories/history
+- GET /api/intelligence/countries/history
+- GET /api/intelligence/events/{event_id}/timeline
+- GET /api/intelligence/events/{event_id}/related
+- GET /api/intelligence/events/{event_id}/sources
+- POST /api/intelligence/compare
+
+Historical statistics are calculated with SQLite aggregation. Event timelines use stored article relationships. Conflict detection preserves differing claims instead of selecting a winner. Reporting momentum is descriptive only.
+
+### Retention
+
+Historical retention defaults to 365 days and can be configured with `HISTORICAL_RETENTION_DAYS`. The retention floor is 30 days so short retention does not silently disable historical analysis.
+
+### Run
+
+Start the backend and frontend as before. Open **Historical Intelligence** from the event workspace. Event detail pages also expose the stored article timeline, source diversity, observed reporting momentum, changes and conflicting claims when evidence is available.
+
+The Phase 4 implementation does not add Kafka, Elasticsearch, Redis, Kubernetes, PostGIS, paid AI/news APIs, or political prediction/recommendation features.

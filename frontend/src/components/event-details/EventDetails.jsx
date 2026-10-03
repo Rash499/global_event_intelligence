@@ -6,6 +6,7 @@ import EventHeader from "./EventHeader";
 import EventLocation from "./EventLocation";
 import EventMetrics from "./EventMetrics";
 import EventSources from "./EventSources";
+import EventEvolution from "./EventEvolution";
 
 export default function EventDetails({ event, onBack }) {
   const [details, setDetails] = useState(event);
@@ -43,6 +44,7 @@ export default function EventDetails({ event, onBack }) {
       <EventHeader details={details} loading={loading} onBack={onBack} />
       <EventMetrics details={details} sourceCount={sources.length} />
       <EventLocation details={details} />
+      <EventEvolution eventId={event.id} />
 
       <section className="detail-engagement" aria-label="Event engagement">
         <EventInteractionBar

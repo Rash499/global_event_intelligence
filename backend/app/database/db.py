@@ -3,6 +3,8 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
+from ..config import settings
+
 BASE_DIR = Path(__file__).resolve().parents[2]
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -64,6 +66,9 @@ def write_connection():
         conn.close()
 
 
+HISTORICAL_RETENTION_DAYS = max(30, settings.historical_retention_days)
+
+
 def purge_expired_events() -> int:
     # Use the same write-lock strategy as ingestion so retention cleanup waits
     # for another writer instead of failing with SQLITE_BUSY.
@@ -86,8 +91,9 @@ def purge_expired_events() -> int:
                         THEN created_at
                         ELSE event_time
                     END
-                ) < julianday('now', '-7 days')
-                """
+                ) < julianday('now', '-' || ? || ' days')
+                """,
+                (HISTORICAL_RETENTION_DAYS,),
             ).fetchall()
         ]
 
@@ -95,7 +101,7 @@ def purge_expired_events() -> int:
             return 0
 
         placeholders = ",".join("?" for _ in expired_ids)
-        for table in ("event_articles", "event_likes", "event_comments"):
+        for table in ("event_articles", "event_likes", "event_comments", "event_claims"):
             conn.execute(
                 f"DELETE FROM {table} WHERE event_id IN ({placeholders})",
                 expired_ids,

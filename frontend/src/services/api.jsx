@@ -151,3 +151,41 @@ export const runAssistantIndexing = async (options = {}) => {
 };
 
 
+
+export const getHistoricalIntelligence = async (start, end, options = {}) => {
+  const response = await api.get("/intelligence/history", {
+    params: { start, end, ...options },
+  });
+  return response.data;
+};
+
+export const getHistoricalTrends = async (start, end, options = {}) => {
+  const response = await api.get("/intelligence/trends", {
+    params: { start, end, ...options },
+  });
+  return response.data;
+};
+
+export const getEventTimeline = async (eventId) => {
+  const response = await api.get(`/intelligence/events/${eventId}/timeline`);
+  return response.data;
+};
+
+export const getRelatedEvents = async (eventId) => {
+  const response = await api.get(`/intelligence/events/${eventId}/related`);
+  return response.data;
+};
+
+export const getEventSources = async (eventId) => {
+  const response = await api.get(`/intelligence/events/${eventId}/sources`);
+  return response.data;
+};
+
+export const compareHistoricalPeriods = async (periodA, periodB, scope = {}) => {
+  const response = await api.post("/intelligence/compare", {
+    period_a: periodA,
+    period_b: periodB,
+    scope,
+  });
+  return response.data;
+};
