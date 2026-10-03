@@ -101,7 +101,7 @@ def purge_expired_events() -> int:
             return 0
 
         placeholders = ",".join("?" for _ in expired_ids)
-        for table in ("event_articles", "event_likes", "event_comments"):
+        for table in ("event_articles", "event_likes", "event_comments", "event_claims"):
             conn.execute(
                 f"DELETE FROM {table} WHERE event_id IN ({placeholders})",
                 expired_ids,
