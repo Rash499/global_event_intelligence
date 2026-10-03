@@ -46,7 +46,7 @@ export default function HistoricalIntelligenceDashboard({ onBack }) {
         <div className="historical-range">
           {[1, 7, 30].map((value) => (
             <button key={value} className={days === value ? "active" : ""} onClick={() => setDays(value)}>
-              {value === 1 ? "24H" : \`\${value}D\`}
+              {value === 1 ? "24H" : `${value}D`}
             </button>
           ))}
         </div>
@@ -73,7 +73,7 @@ export default function HistoricalIntelligenceDashboard({ onBack }) {
                 {(data?.events || []).slice(0, 12).map((event) => (
                   <div className="historical-bar-row" key={event.id}>
                     <span title={event.title}>{event.title}</span>
-                    <i style={{ width: \`\${Math.max(4, Math.min(100, event.importance * 10))}%\` }} />
+                    <i style={{ width: `${Math.max(4, Math.min(100, event.importance * 10))}%` }} />
                     <b>{event.importance}/10</b>
                   </div>
                 ))}
