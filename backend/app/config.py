@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.2:3b"
     gdelt_max_records: int = 50
+    historical_retention_days: int = 365
 
     # ------------------------------------------------------------------
     # Phase 3 - grounded RAG assistant
