@@ -64,6 +64,9 @@ def write_connection():
         conn.close()
 
 
+HISTORICAL_RETENTION_DAYS = 365
+
+
 def purge_expired_events() -> int:
     # Use the same write-lock strategy as ingestion so retention cleanup waits
     # for another writer instead of failing with SQLITE_BUSY.
@@ -86,7 +89,7 @@ def purge_expired_events() -> int:
                         THEN created_at
                         ELSE event_time
                     END
-                ) < julianday('now', '-7 days')
+                ) < julianday('now', ? || ' days')
                 """
             ).fetchall()
         ]
