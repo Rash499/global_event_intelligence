@@ -83,3 +83,31 @@ def test_temporal_parser_supports_explicit_ranges():
     assert start.startswith("2026-09-01")
     assert end.startswith("2026-09-16")
     assert "between" in label
+
+
+def test_casualty_extraction_separates_metrics_and_ignores_unrelated_numbers():
+    conn = make_db()
+    conn.execute("INSERT INTO events VALUES (1,'Incident','','security','X','XX',None,None,8,.8,1,'single','2026-09-01T08:00:00Z','2026-09-01T08:00:00Z')")
+    conn.execute("INSERT INTO articles VALUES (?,?,?,?,?,?)", (
+        1, "Incident 2026 update", "https://a.example/a", "A",
+        "2026-09-01T08:00:00Z",
+        "10 people were killed and 5 were injured in the incident. The report was updated in 2026."
+    ))
+    conn.execute("INSERT INTO event_articles VALUES (?,?)", (1,1))
+    changes, claims = detect_changes(conn, 1)
+    assert {(x["metric"], x["value"]) for x in claims} == {("killed", 10), ("injured", 5)}
+    assert not any(x["type"] == "conflicting_information" for x in changes)
+
+
+def test_related_events_require_temporal_proximity_for_category_country_match():
+    conn = make_db()
+    conn.executemany("INSERT INTO events VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", [
+        (1, "Current", "", "security", "X", "XX", None, None, 8, .8, 1, "single", "2026-09-10T08:00:00Z", "2026-09-10T08:00:00Z"),
+        (2, "Old unrelated", "", "security", "X", "XX", None, None, 7, .8, 1, "single", "2026-08-01T08:00:00Z", "2026-08-01T08:00:00Z"),
+        (3, "Recent similar", "", "security", "X", "XX", None, None, 7, .8, 1, "single", "2026-09-09T12:00:00Z", "2026-09-09T12:00:00Z"),
+    ])
+    from app.intelligence.historical import ensure_relationships
+    relationships = ensure_relationships(conn, 1)
+    ids = {item["event_id"] for item in relationships}
+    assert 2 not in ids
+    assert 3 in ids
