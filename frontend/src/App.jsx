@@ -13,6 +13,7 @@ import EventList from "./components/EventList";
 import EventDetails from "./components/EventDetails";
 import CountryDashboard from "./components/CountryDashboard";
 import GlobalEventDashboard from "./components/GlobalEventDashboard";
+import HistoricalIntelligenceDashboard from "./components/HistoricalIntelligenceDashboard";
 import WeatherModeToggle from "./components/weather/WeatherModeToggle";
 import WeatherPanel from "./components/weather/WeatherPanel";
 import WeatherDashboard from "./components/weather/WeatherDashboard";
@@ -67,6 +68,7 @@ import "./styles/assistant/sources.css";
 import "./styles/assistant/composer.css";
 import "./styles/assistant/responsive.css";
 import "./styles/app-shell.css";
+import "./styles/historical-intelligence.css";
 
 function getCountryCode(feature) {
   const candidates = [
@@ -136,6 +138,7 @@ function IntelligenceWorkspace({ user, onLogout }) {
   const [selectedCountry, setSelectedCountry] = useState(null);
   const [selectedWeather, setSelectedWeather] = useState(null);
   const [showGlobalDashboard, setShowGlobalDashboard] = useState(false);
+  const [showHistorical, setShowHistorical] = useState(false);
   const [showAssistant, setShowAssistant] = useState(false);
   const [mode, setMode] = useState("events");
   const [weather, setWeather] = useState([]);
@@ -328,7 +331,7 @@ function IntelligenceWorkspace({ user, onLogout }) {
     setMode("weather");
   };
 
-  const goAssistant = () => {
+  const goHistorical = () => {\n    setSelectedEvent(null);\n    setSelectedCountry(null);\n    setSelectedWeather(null);\n    setShowGlobalDashboard(false);\n    setShowAssistant(false);\n    setShowHistorical(true);\n    setMode("events");\n  };\n\n  const goAssistant = () => {
     setSelectedEvent(null);
     setSelectedCountry(null);
     setSelectedWeather(null);
@@ -384,7 +387,7 @@ function IntelligenceWorkspace({ user, onLogout }) {
     );
   }
 
-  if (showAssistant) {
+  if (showHistorical) {\n    return chrome(\n      <main className="app app-page">\n        <HistoricalIntelligenceDashboard onBack={goOverview} />\n      </main>\n    );\n  }\n\n  if (showAssistant) {
     return chrome(
       <main className="app app-page">
         <GlobalIntelligenceAssistant onBack={goOverview} />
