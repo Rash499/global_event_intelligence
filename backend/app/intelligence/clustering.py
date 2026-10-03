@@ -1,4 +1,14 @@
-from math import hypot
+from math import asin, cos, hypot, radians, sin, sqrt
+
+
+def haversine_distance_km(lat1, lon1, lat2, lon2):
+    """Return great-circle distance in kilometres."""
+    phi1, phi2 = radians(float(lat1)), radians(float(lat2))
+    dphi = radians(float(lat2) - float(lat1))
+    dlambda = radians(float(lon2) - float(lon1))
+    a = sin(dphi / 2) ** 2 + cos(phi1) * cos(phi2) * sin(dlambda / 2) ** 2
+    return 6371.0088 * 2 * asin(sqrt(max(0.0, min(1.0, a))))
+
 
 from .deduplication import normalize_title
 
@@ -58,7 +68,7 @@ def score_event_similarity(left, right):
     right_lat = _parse_float(right.get("latitude"))
     right_lon = _parse_float(right.get("longitude"))
     if left_lat is not None and right_lat is not None and left_lon is not None and right_lon is not None:
-        distance = hypot(left_lat - right_lat, left_lon - right_lon)
+        distance = haversine_distance_km(left_lat, left_lon, right_lat, right_lon)
         if distance <= EVENT_CLUSTER_DISTANCE_KM:
             score += 0.15
 
