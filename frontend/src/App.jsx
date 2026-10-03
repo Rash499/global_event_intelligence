@@ -301,6 +301,7 @@ function IntelligenceWorkspace({ user, onLogout }) {
     setSelectedCountry(null);
     setSelectedWeather(null);
     setShowGlobalDashboard(false);
+    setShowHistorical(false);
     setShowAssistant(false);
     setMode(nextMode);
   };
@@ -310,6 +311,7 @@ function IntelligenceWorkspace({ user, onLogout }) {
     setSelectedCountry(null);
     setSelectedWeather(null);
     setShowGlobalDashboard(false);
+    setShowHistorical(false);
     setShowAssistant(false);
     setMode("events");
   };
@@ -319,6 +321,7 @@ function IntelligenceWorkspace({ user, onLogout }) {
     setSelectedCountry(null);
     setSelectedWeather(null);
     setShowAssistant(false);
+    setShowHistorical(false);
     setShowGlobalDashboard(true);
   };
 
@@ -327,11 +330,22 @@ function IntelligenceWorkspace({ user, onLogout }) {
     setSelectedCountry(null);
     setSelectedWeather(null);
     setShowGlobalDashboard(false);
+    setShowHistorical(false);
     setShowAssistant(false);
     setMode("weather");
   };
 
-  const goHistorical = () => {\n    setSelectedEvent(null);\n    setSelectedCountry(null);\n    setSelectedWeather(null);\n    setShowGlobalDashboard(false);\n    setShowAssistant(false);\n    setShowHistorical(true);\n    setMode("events");\n  };\n\n  const goAssistant = () => {
+  const goHistorical = () => {
+    setSelectedEvent(null);
+    setSelectedCountry(null);
+    setSelectedWeather(null);
+    setShowGlobalDashboard(false);
+    setShowAssistant(false);
+    setShowHistorical(true);
+    setMode("events");
+  };
+
+  const goAssistant = () => {
     setSelectedEvent(null);
     setSelectedCountry(null);
     setSelectedWeather(null);
@@ -341,7 +355,9 @@ function IntelligenceWorkspace({ user, onLogout }) {
 
   const activeView = showAssistant
     ? "assistant"
-    : showGlobalDashboard
+    : showHistorical
+      ? "dashboard"
+      : showGlobalDashboard
       ? "dashboard"
       : mode === "weather" || selectedWeather
         ? "weather"
@@ -354,6 +370,7 @@ function IntelligenceWorkspace({ user, onLogout }) {
         onOverview={goOverview}
         onDashboard={goDashboard}
         onWeather={goWeather}
+        onAssistant={goAssistant}
         onAssistant={goAssistant}
         onCollect={handleCollect}
         collecting={collecting}
@@ -387,7 +404,15 @@ function IntelligenceWorkspace({ user, onLogout }) {
     );
   }
 
-  if (showHistorical) {\n    return chrome(\n      <main className="app app-page">\n        <HistoricalIntelligenceDashboard onBack={goOverview} />\n      </main>\n    );\n  }\n\n  if (showAssistant) {
+  if (showHistorical) {
+    return chrome(
+      <main className="app app-page">
+        <HistoricalIntelligenceDashboard onBack={goOverview} />
+      </main>
+    );
+  }
+
+  if (showAssistant) {
     return chrome(
       <main className="app app-page">
         <GlobalIntelligenceAssistant onBack={goOverview} />
