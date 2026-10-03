@@ -113,6 +113,7 @@ TREND_INTENT_PATTERNS = [
     r"\bover the (last|past)\b",
     r"\btimeline\b",
     r"\bhistory of (event|activity|reporting)\b",
+    r"\bwhat changed\b",
     r"\bincrease(d|s)? or decrease(d|s)?\b",
 ]
 
