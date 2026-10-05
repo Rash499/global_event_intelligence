@@ -1,0 +1,13 @@
+/* Shared keyframes + loading primitives. All motion is disabled for reduced-motion users. */
+@keyframes shimmer { from { background-position: -240px 0; } to { background-position: calc(240px + 100%) 0; } }
+@keyframes livePulse { 0% { box-shadow: 0 0 0 0 rgba(87,224,174,.55); } 70% { box-shadow: 0 0 0 9px rgba(87,224,174,0); } 100% { box-shadow: 0 0 0 0 rgba(87,224,174,0); } }
+@keyframes floatA { 0%,100% { transform: translate3d(0,0,0) scale(1); } 50% { transform: translate3d(36px,18px,0) scale(1.08); } }
+@keyframes floatB { 0%,100% { transform: translate3d(0,0,0) scale(1); } 50% { transform: translate3d(-30px,24px,0) scale(1.1); } }
+@keyframes scanDown { 0% { transform: translateY(-120%); opacity:0; } 15%,85% { opacity:1; } 100% { transform: translateY(520%); opacity:0; } }
+@keyframes toastIn { from { opacity:0; transform:translateY(-10px) scale(.97); } to { opacity:1; transform:translateY(0) scale(1); } }
+@keyframes menuPop { from { opacity:0; transform:translateY(-6px) scale(.97); } to { opacity:1; transform:translateY(0) scale(1); } }
+@keyframes ringSpin { to { transform: rotate(360deg); } }
+.skeleton { display:block; border-radius:var(--radius-sm); background:linear-gradient(100deg,rgba(66,201,255,.05) 20%,rgba(123,220,255,.16) 50%,rgba(66,201,255,.05) 80%) 0 0/240px 100% no-repeat,rgba(10,27,44,.75); animation:shimmer 1.4s linear infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .skeleton,.hero-orb,.hero-scan,.hero-status i,.event-alert,.account-menu { animation:none !important; }
+}
