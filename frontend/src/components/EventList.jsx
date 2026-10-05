@@ -1,6 +1,11 @@
 import EventCard from "./EventCard";
+import { EventListSkeleton } from "./ui/Skeleton";
 
-export default function EventList({ events, onSelect, variant = "list" }) {
+export default function EventList({ events, onSelect, variant = "list", loading = false }) {
+  if (loading && !events.length) {
+    return <EventListSkeleton />;
+  }
+
   if (!events.length) {
     return (
       <div className="empty-state event-empty-state">
@@ -13,8 +18,14 @@ export default function EventList({ events, onSelect, variant = "list" }) {
 
   return (
     <div className="event-list">
-      {events.map((event) => (
-        <EventCard key={event.id} event={event} variant={variant} onSelect={onSelect} />
+      {events.map((event, index) => (
+        <EventCard
+          key={event.id}
+          event={event}
+          variant={variant}
+          index={index}
+          onSelect={onSelect}
+        />
       ))}
     </div>
   );

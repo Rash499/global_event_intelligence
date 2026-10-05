@@ -1,0 +1,19 @@
+/*
+ * Design tokens — scales shared by every stylesheet.
+ * Colour tokens (--bg-0, --cyan, --line …) still live in app-shell.css; this file
+ * adds the spacing / radius / motion / elevation scales that were previously
+ * repeated as magic numbers.
+ */
+:root {
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+  --space-5: 24px; --space-6: 32px; --space-7: 48px;
+  --radius-sm: 9px; --radius-md: 14px; --radius-lg: 20px; --radius-pill: 999px;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --dur-fast: 140ms; --dur-base: 240ms; --dur-slow: 520ms; --stagger-step: 55ms;
+  --glow-cyan: 0 0 28px rgba(66, 201, 255, 0.16);
+  --glow-violet: 0 0 28px rgba(139, 124, 255, 0.16);
+  --glow-green: 0 0 18px rgba(87, 224, 174, 0.35);
+  --ring: 0 0 0 2px #020712, 0 0 0 4px rgba(66, 201, 255, 0.85);
+  --z-base: 1; --z-sticky: 900; --z-nav: 1000; --z-toast: 1100;
+}
