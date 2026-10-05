@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     ollama_model: str = "llama3.2:3b"
     gdelt_max_records: int = 50
     historical_retention_days: int = 365
+    # Only ingest articles published within this many hours of collection.
+    news_lookback_hours: int = 24
 
     # ------------------------------------------------------------------
     # Phase 3 - grounded RAG assistant
