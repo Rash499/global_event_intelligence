@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 
 from .gdelt import fetch_gdelt
 from .google_news import fetch_google_news
@@ -34,6 +35,84 @@ def _schedule_rag_indexing():
 
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_article_datetime(value):
+    """Parse common GDELT, Google News, and RSS timestamps as UTC."""
+    if not value:
+        return None
+
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        text = str(value).strip()
+        if not text:
+            return None
+
+        parsed = None
+        try:
+            parsed = parsedate_to_datetime(text)
+        except (TypeError, ValueError, IndexError):
+            pass
+
+        if parsed is None:
+            for fmt in (
+                "%Y%m%dT%H%M%SZ",
+                "%Y%m%dT%H%M%S",
+                "%Y-%m-%dT%H:%M:%SZ",
+                "%Y-%m-%dT%H:%M:%S%z",
+                "%Y-%m-%dT%H:%M:%S",
+            ):
+                try:
+                    parsed = datetime.strptime(text, fmt)
+                    break
+                except ValueError:
+                    continue
+
+        if parsed is None:
+            try:
+                parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+            except ValueError:
+                return None
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+
+    return parsed.astimezone(timezone.utc)
+
+
+def _filter_recent_articles(articles):
+    """Keep only articles published within the configured lookback window."""
+    now = datetime.now(timezone.utc)
+    lookback_hours = max(1, int(settings.news_lookback_hours))
+    cutoff = now.timestamp() - (lookback_hours * 3600)
+
+    recent = []
+    skipped_stale = 0
+    skipped_invalid_date = 0
+
+    for article in articles:
+        published = _parse_article_datetime(article.get("published_at"))
+
+        if published is None:
+            skipped_invalid_date += 1
+            continue
+
+        if published.timestamp() < cutoff or published > now:
+            skipped_stale += 1
+            continue
+
+        recent.append(article)
+
+    logger.info(
+        "[INGESTION] Date filter: kept=%s skipped_stale_or_future=%s "
+        "skipped_invalid_date=%s lookback_hours=%s",
+        len(recent),
+        skipped_stale,
+        skipped_invalid_date,
+        lookback_hours,
+    )
+    return recent, skipped_stale + skipped_invalid_date
 
 
 def _event_time_from_article(article):
@@ -209,12 +288,16 @@ async def ingest():
         logger.info("[%s] Fetched %s articles", source_name, len(fetched))
         articles.extend(fetched)
 
+    # Filter by publication date before applying the processing cap. This
+    # prevents stale feed entries from consuming the 60-article batch.
+    articles, filtered_out = _filter_recent_articles(articles)
+
     # Keep one collection cycle bounded. News feeds can return hundreds of
     # records, while each record still requires database work and optional AI
     # analysis. A small bounded batch keeps the UI responsive.
     max_articles = 60
     articles = articles[:max_articles]
-    logger.info("[INGESTION] Processing %s articles", len(articles))
+    logger.info("[INGESTION] Processing %s recent articles", len(articles))
 
     with write_connection() as conn:
         existing_articles = [
@@ -429,4 +512,5 @@ async def ingest():
             "events_created": events_created,
             "ai_analyzed": ai_analyzed,
             "ai_failed": ai_failed,
+            "articles_filtered": filtered_out,
         }
