@@ -368,3 +368,45 @@ def test_taxonomy_endpoint(client):
     body = client.get("/api/taxonomy").json()
     assert body["version"] == "1.0"
     assert len(body["categories"]) == 16
+
+
+# ----------------------------------------------------------------------
+# Map layer: location precision must be explicit
+# ----------------------------------------------------------------------
+def test_map_layer_separates_coordinates_from_country_level(client, seeded):
+    body = client.get("/api/map/events?days=7").json()
+
+    plotted = {item["id"] for item in body["items"] if item["latitude"] is not None}
+    assert plotted, "coordinate events should be returned"
+    # Country-only rows may appear in the payload but must be labelled as such,
+    # so the UI can shade a region instead of inventing a pin.
+    for item in body["items"]:
+        assert "location_precision" in item
+        if item["location_precision"] == "country":
+            assert item["latitude"] is None
+
+    assert body["coverage"]["country_level_only"] >= 1
+    assert body["coverage"]["plotted_with_coordinates"] >= 1
+    assert body["legend"]["severity_bands"]
+
+
+def test_map_layer_precision_filter(client, seeded):
+    coords = client.get("/api/map/events?days=7&precision=coordinates").json()
+    assert all(item["latitude"] is not None for item in coords["items"])
+
+    country = client.get("/api/map/events?days=7&precision=country").json()
+    assert country["items"]
+    assert all(item["location_precision"] == "country" for item in country["items"])
+    # The shading payload groups country-only events per country.
+    assert {row["country_code"] for row in country["country_shading"]} <= {"LK", "BR"}
+
+
+def test_map_layer_rejects_unknown_precision(client, seeded):
+    assert client.get("/api/map/events?precision=guessed").status_code == 422
+
+
+def test_ingestion_status_reports_lock_state(client):
+    body = client.get("/api/ingestion/status").json()
+    assert body["running"] is False
+    assert isinstance(body["enabled_providers"], list)
+    assert isinstance(body["recent_runs"], list)

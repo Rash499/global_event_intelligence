@@ -42,3 +42,6 @@ next/
 Thumbs.db
 .idea/
 *.log
+
+# TypeScript incremental build output
+*.tsbuildinfo

@@ -57,6 +57,19 @@ def conn(db_path):
         connection.close()
 
 
+@pytest.fixture(autouse=True)
+def fresh_rate_limits():
+    """Every test starts with an empty rate-limit window.
+
+    The limiter is process-wide by design, so without this a test that seeds
+    demo data twice would hit the 2/minute write budget of another test.
+    """
+    from app.security.ratelimit import get_limiter
+
+    get_limiter(240).reset()
+    yield
+
+
 @pytest.fixture()
 def client(db_path):
     from fastapi.testclient import TestClient

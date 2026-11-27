@@ -1,28 +1,39 @@
 import { useEffect, useRef, useState } from "react";
 
 import useScrolled from "../hooks/useScrolled";
+import { workspaceSections } from "../navigation/workspaceNav";
+import { useGroupedSections } from "../services/format.jsx";
 
+/**
+ * Operations workspace navigation.
+ *
+ * Sections are grouped (Monitor / Analyse / Deliver / Operate) so the workspace
+ * reads as a product rather than a flat list of pages. The health dot reflects
+ * the provider status endpoint; it is only shown when the backend reported it.
+ */
 export default function Navbar({
   activeView = "overview",
+  onNavigate,
   onOverview,
-  onDashboard,
-  onWeather,
-  onAssistant,
+  onOpenSearch,
   onCollect,
   collecting,
+  providerHealth,
+  alertCount = 0,
   user,
   onLogout,
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const accountRef = useRef(null);
   const scrolled = useScrolled();
+  const groups = useGroupedSections(workspaceSections);
 
-  const navItems = [
-    { id: "overview", label: "Overview", icon: "◎", action: onOverview },
-    { id: "dashboard", label: "Analytics", icon: "▤", action: onDashboard },
-    { id: "weather", label: "Weather", icon: "☁", action: onWeather },
-    { id: "assistant", label: "AI Assistant", icon: "✦", action: onAssistant },
-  ];
+  const go = (id) => {
+    setMobileOpen(false);
+    if (id === "overview" && onOverview) onOverview();
+    else onNavigate?.(id);
+  };
 
   // Close the account menu on outside click or Escape.
   useEffect(() => {
@@ -45,36 +56,90 @@ export default function Navbar({
     };
   }, [menuOpen]);
 
+  const healthTone =
+    providerHealth?.unavailable > 0 ? "danger" : providerHealth?.degraded > 0 ? "warn" : providerHealth ? "ok" : "unknown";
+  const healthLabel = providerHealth
+    ? `${providerHealth.healthy || 0} healthy, ${providerHealth.degraded || 0} degraded, ${
+        providerHealth.unavailable || 0
+      } unavailable, ${providerHealth.not_configured || 0} not configured`
+    : "Provider status unknown";
+
   return (
-    <nav className={scrolled ? "site-navbar is-scrolled" : "site-navbar"} aria-label="Main">
+    <nav className={scrolled ? "site-navbar is-scrolled" : "site-navbar"} aria-label="Workspace">
       <div className="navbar-inner">
-        <button className="navbar-brand" onClick={onOverview} aria-label="Global Event Intelligence home">
+        <button className="navbar-brand" onClick={() => go("overview")} aria-label="Global Event Intelligence home">
           <span className="navbar-orbit" aria-hidden="true"><i /><i /><i /></span>
           <span>
             <strong>Global Intelligence</strong>
-            <small>EVENT MONITORING PLATFORM</small>
+            <small>OPERATIONS WORKSPACE</small>
           </span>
         </button>
 
-        <div className="navbar-links" role="group" aria-label="Primary navigation">
-          {navItems.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={activeView === item.id ? "nav-link active" : "nav-link"}
-              aria-current={activeView === item.id ? "page" : undefined}
-              onClick={item.action}
-            >
-              <span className="nav-link-icon" aria-hidden="true">{item.icon}</span>
-              {item.label}
-            </button>
+        <button
+          type="button"
+          className="navbar-burger"
+          aria-expanded={mobileOpen}
+          aria-controls="workspace-nav-links"
+          onClick={() => setMobileOpen((value) => !value)}
+        >
+          <span aria-hidden="true">☰</span> Sections
+        </button>
+
+        <div
+          id="workspace-nav-links"
+          className={mobileOpen ? "navbar-links is-open" : "navbar-links"}
+          role="group"
+          aria-label="Primary navigation"
+        >
+          {groups.map((group) => (
+            <div className="nav-group" key={group.name}>
+              <span className="nav-group-label" aria-hidden="true">{group.name}</span>
+              {group.items.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={activeView === item.id ? "nav-link active" : "nav-link"}
+                  aria-current={activeView === item.id ? "page" : undefined}
+                  onClick={() => go(item.id)}
+                  title={item.label}
+                >
+                  <span className="nav-link-icon" aria-hidden="true">{item.icon}</span>
+                  <span className="nav-link-text">{item.label}</span>
+                  {item.id === "alerts" && alertCount > 0 && (
+                    <span className="nav-link-count" aria-label={`${alertCount} new alerts`}>{alertCount}</span>
+                  )}
+                </button>
+              ))}
+            </div>
           ))}
         </div>
 
         <div className="navbar-actions">
+          <button
+            type="button"
+            className="navbar-search"
+            onClick={onOpenSearch}
+            aria-label="Search events, countries and sources"
+          >
+            <span aria-hidden="true">⌕</span>
+            <span className="navbar-search-text">Search</span>
+            <kbd>⌘K</kbd>
+          </button>
+
+          <button
+            type="button"
+            className={`navbar-health tone-${healthTone}`}
+            onClick={() => go("providers")}
+            title={healthLabel}
+          >
+            <i aria-hidden="true" />
+            <span className="sr-only">Provider health: </span>
+            {healthTone === "unknown" ? "Feeds" : healthTone === "ok" ? "Feeds OK" : "Feed issues"}
+          </button>
+
           <button className="navbar-collect" onClick={onCollect} disabled={collecting}>
             <span className={collecting ? "spin" : ""} aria-hidden="true">↻</span>
-            {collecting ? "Collecting" : "Collect News"}
+            {collecting ? "Collecting" : "Collect"}
           </button>
 
           <div className="navbar-account" ref={accountRef}>

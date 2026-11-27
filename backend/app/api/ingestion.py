@@ -12,7 +12,7 @@ _ingestion_lock = asyncio.Lock()
 
 
 @router.post("/ingestion/run")
-async def run_ingestion():
+async def run_ingestion(providers: str | None = None):
     """Run one ingestion cycle at a time.
 
     The ingestion pipeline talks to several remote feeds and optionally Ollama.
@@ -25,12 +25,31 @@ async def run_ingestion():
             detail="News collection is already running. Please wait for the current run to finish.",
         )
 
+    requested = (
+        [key.strip() for key in providers.split(",") if key.strip()]
+        if providers
+        else None
+    )
+
     async with _ingestion_lock:
         try:
-            return await ingest()
+            return await ingest(providers=requested)
         except Exception as exc:
             logger.exception("Ingestion failed")
             raise HTTPException(
                 status_code=503,
                 detail=f"News collection failed: {type(exc).__name__}. Check the backend logs for details.",
             ) from exc
+
+
+@router.get("/ingestion/status")
+def ingestion_status():
+    """Whether a collection run is in progress, and the last run summary."""
+    from ..ingestion.registry import collection_history, enabled_provider_keys
+
+    history = collection_history(limit=5)
+    return {
+        "running": _ingestion_lock.locked(),
+        "enabled_providers": enabled_provider_keys(),
+        "recent_runs": history,
+    }

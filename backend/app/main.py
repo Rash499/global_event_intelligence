@@ -14,6 +14,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from .api.routes import router
 from .config import settings
 from .database.db import init_db, purge_expired_events
+from .security.ratelimit import get_limiter
 from .logging_config import configure_logging
 from .weather.routes import router as weather_router
 
@@ -184,6 +185,36 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
+
+
+@app.middleware("http")
+async def rate_limit(request: Request, call_next):
+    """Fixed-window rate limiting on the API surface.
+
+    Write routes get a much smaller budget than reads (see
+    ``security/ratelimit.py``). Health checks are never limited so monitoring
+    cannot lock itself out.
+    """
+    path = request.url.path
+    if not path.startswith("/api") or path == "/api/health":
+        return await call_next(request)
+
+    # Identity is the caller's token subject when present, otherwise the peer
+    # address. The token is not logged or stored.
+    auth = request.headers.get("authorization", "")
+    identity = auth[-24:] if auth else (request.client.host if request.client else "unknown")
+    limiter = get_limiter(settings.api_rate_limit_per_minute)
+    allowed, remaining, retry_after = limiter.check(identity, path)
+    if not allowed:
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Rate limit exceeded. Retry shortly."},
+            headers={"Retry-After": str(retry_after), "X-RateLimit-Remaining": "0"},
+        )
+
+    response = await call_next(request)
+    response.headers.setdefault("X-RateLimit-Remaining", str(remaining))
+    return response
 
 
 @app.middleware("http")

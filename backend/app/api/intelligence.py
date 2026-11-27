@@ -924,3 +924,139 @@ def export_report(
             "Content-Disposition": f'inline; filename="intelligence-report-{report_id}.html"'
         },
     )
+
+
+# ----------------------------------------------------------------------
+# Map layer
+# ----------------------------------------------------------------------
+@router.get("/map/events")
+def map_events(
+    days: int = Query(7, ge=1, le=90),
+    category: str | None = None,
+    country_code: str | None = None,
+    min_severity: float | None = Query(None, ge=0, le=10),
+    limit: int = Query(500, ge=1, le=2000),
+    precision: str = Query("all", pattern="^(all|coordinates|country)$"),
+    user=Depends(get_optional_user),
+):
+    """Events for the map, with their location precision made explicit.
+
+    The frontend must never plot a country-level event as a point: it would put
+    a fabricated coordinate on the map. So each feature carries
+    ``location_precision`` and the caller decides how to render it (region
+    shading / list instead of a pin). Events without any location are excluded
+    from this layer and reported in ``excluded`` so the count is honest.
+    """
+    since = _iso(datetime.now(timezone.utc) - timedelta(days=days))
+    conditions = [
+        "julianday(COALESCE(e.occurred_at, e.event_time, e.created_at)) >= julianday(?)",
+    ]
+    params: list = [since]
+    if category:
+        conditions.append("e.category = ?")
+        params.append(category)
+    if country_code:
+        conditions.append("e.country_code = ?")
+        params.append(country_code.upper())
+    if min_severity is not None:
+        conditions.append("e.severity >= ?")
+        params.append(min_severity)
+    if precision == "coordinates":
+        conditions.append("e.latitude IS NOT NULL AND e.longitude IS NOT NULL")
+        conditions.append("e.location_precision IN ('exact','city','region','locality')")
+    elif precision == "country":
+        conditions.append("e.location_precision = 'country'")
+
+    where = " AND ".join(conditions)
+    conn = get_connection()
+    try:
+        rows = [
+            dict(row)
+            for row in conn.execute(
+                f"""
+                SELECT e.id, e.title, e.category, e.subcategory, e.country,
+                       e.country_code, e.latitude, e.longitude, e.location_precision,
+                       e.location_text, e.severity, e.severity_label, e.confidence,
+                       e.priority_score, e.priority_label, e.event_state, e.importance,
+                       e.occurred_at, e.corroboration_level, e.independent_source_count,
+                       e.is_structured_observation
+                FROM events e
+                WHERE {where}
+                ORDER BY COALESCE(e.priority_score, 0) DESC,
+                         COALESCE(e.severity, 0) DESC,
+                         e.id DESC
+                LIMIT ?
+                """,
+                (*params, limit),
+            ).fetchall()
+        ]
+        # Coverage figures for the same window/filters, so the map legend can
+        # say how many events it is *not* showing.
+        base_where = " AND ".join(conditions)
+        plotted = conn.execute(
+            f"""
+            SELECT COUNT(*) FROM events e WHERE {base_where}
+              AND e.latitude IS NOT NULL AND e.longitude IS NOT NULL
+              AND e.location_precision IN ('exact','city','region','locality')
+            """,
+            params,
+        ).fetchone()[0]
+        country_only = conn.execute(
+            f"SELECT COUNT(*) FROM events e WHERE {base_where} AND e.location_precision = 'country'",
+            params,
+        ).fetchone()[0]
+        no_location = conn.execute(
+            f"""
+            SELECT COUNT(*) FROM events e WHERE {base_where}
+              AND (e.location_precision IS NULL OR e.location_precision = 'unknown')
+            """,
+            params,
+        ).fetchone()[0]
+
+        # Country-level events are grouped per country so the UI can shade a
+        # region instead of inventing a point.
+        country_rows = [
+            dict(row)
+            for row in conn.execute(
+                f"""
+                SELECT e.country_code, e.country, COUNT(*) AS events,
+                       MAX(e.severity) AS max_severity,
+                       SUM(CASE WHEN e.severity >= 6.5 THEN 1 ELSE 0 END) AS high_severity
+                FROM events e
+                WHERE {base_where} AND e.country_code IS NOT NULL
+                  AND e.location_precision = 'country'
+                GROUP BY e.country_code
+                """,
+                params,
+            ).fetchall()
+        ]
+    finally:
+        conn.close()
+
+    return {
+        "generated_at": _iso(datetime.now(timezone.utc)),
+        "window_days": days,
+        "precision_mode": precision,
+        "items": rows,
+        "country_shading": country_rows,
+        "coverage": {
+            "returned": len(rows),
+            "plotted_with_coordinates": plotted,
+            "country_level_only": country_only,
+            "no_location": no_location,
+        },
+        "legend": {
+            "severity_bands": [
+                {"label": "critical", "min": 8.5, "colour": "#ff5d7a"},
+                {"label": "high", "min": 6.5, "colour": "#ff9f43"},
+                {"label": "moderate", "min": 4.5, "colour": "#ffd166"},
+                {"label": "low", "min": 2.5, "colour": "#36b8ff"},
+                {"label": "minimal", "min": 0, "colour": "#7d93a8"},
+            ],
+            "note": (
+                "Pins use coordinates reported by the source or resolved by the "
+                "geocoder. Country-level events are shaded by country and never "
+                "plotted as a point."
+            ),
+        },
+    }

@@ -119,18 +119,30 @@ Authentication endpoints:
 Passwords are stored as scrypt hashes; session tokens are stored as hashes.
 Email verification and password recovery are not currently included.
 
-Events are retained for seven days based on their event time. Expired events
-and their likes, comments, and article links are purged when the backend starts
-and then every minute while it is running. The event dashboard refreshes its
-feed every minute so removed events disappear automatically.
+Retention is controlled by `HISTORICAL_RETENTION_DAYS` (default **365 days**, floor
+**30 days**). The purge job runs on startup and then on the scheduler tick; it
+removes expired events together with their likes, comments, article links,
+timeline entries and relationship rows. Historical analysis and the event
+history endpoints read the same window, so the UI never offers a period the
+database no longer holds.
 
 ## 4. Seed demo data
 
-The backend has demo events so the UI works immediately.
+Demo data is **disabled by default** and must be explicitly enabled. It exists
+only so a fresh install has something to render; it is never inserted
+automatically and never counted as intelligence.
 
 ```bash
-curl -X POST http://localhost:8000/api/events/seed
+# backend/.env
+DEMO_DATA_ENABLED=true
+
+curl -X POST http://localhost:8000/api/events/seed \
+  -H 'content-type: application/json' -d '{"confirm": true}'
 ```
+
+Demo events are titled `[DEMO] …` and carry `provider_keys = 'demo'`. The route
+returns 403 in production, and the backend refuses to start with
+`DEMO_DATA_ENABLED=true` when `ENVIRONMENT=production`.
 
 On Windows PowerShell, you can instead open:
 http://localhost:8000/docs
@@ -140,8 +152,10 @@ and execute `POST /api/events/seed`.
 
 The frontend loads saved event history when it opens, then automatically runs
 news collection once for that page load. When collection finishes, the event
-feed refreshes automatically. You can also use the **Collect News** button to
-run collection again at any time.
+feed refreshes automatically. Use the **Collect** button in the navbar (or
+`POST /api/ingestion/run?providers=rss,usgs` for a subset) to run collection
+again at any time. The **Providers** page shows per-provider health, last error
+and run history, and can trigger a single provider.
 
 When collection creates events, the app shows a dismissible alert with the
 number of new events detected. The alert closes automatically after eight
@@ -427,3 +441,104 @@ Historical retention defaults to 365 days and can be configured with `HISTORICAL
 Start the backend and frontend as before. Open **Historical Intelligence** from the event workspace. Event detail pages also expose the stored article timeline, source diversity, observed reporting momentum, changes and conflicting claims when evidence is available.
 
 The Phase 4 implementation does not add Kafka, Elasticsearch, Redis, Kubernetes, PostGIS, paid AI/news APIs, or political prediction/recommendation features.
+
+## Workspace UI
+
+The frontend is organised as an operations workspace rather than a single map
+page. The navigation groups reflect the workflow:
+
+| Group | Sections |
+| --- | --- |
+| Monitor | Overview, Map, Events, Alerts |
+| Analyse | Countries, Entities, History |
+| Deliver | Reports, Assistant |
+| Operate | Providers, System |
+
+- **Overview** — live counts straight from `/api/dashboard/overview`: active
+  events, 24h volume, severity mix, top countries, source mix, priority queue,
+  coverage block and current anomalies. Every tile is a stored count; an empty
+  database renders empty states, never placeholder figures.
+- **Map** — fed by `/api/map/events`. Pins are drawn **only** for events whose
+  `location_precision` supports a point (`exact`, `city`, `locality`, `region`).
+  Events known only at country level are listed and shaded per country. The
+  side panel always states how many events are *not* being plotted, and why.
+- **Events** — server-side filtering and cursor pagination over
+  `/api/events`, with saveable views (`/api/saved-searches`).
+- **Investigation** — `/api/events/{id}`: severity, confidence and priority as
+  three separate scores, each expandable into its stored component breakdown;
+  event/observed/published/ingested times shown separately with their precision;
+  sources split into independent vs syndicated; relationships and entities.
+- **Countries** — per-dimension indicator counts and severity averages with the
+  API's coverage caveat. Deliberately no composite "risk score".
+- **Entities**, **Reports** (CSV/HTML export), **Providers** (real health),
+  **System** (schema version, integrity, scheduler, AI flags, security posture).
+- **Search** — `Ctrl/Cmd-K` opens a command palette over `/api/search`
+  (events, entities, countries, articles) plus section jumps.
+
+The older Analytics, Historical and Assistant views remain available from the
+same navigation; nothing from the previous UI was removed.
+
+### Frontend configuration
+
+`VITE_API_BASE_URL` overrides the API origin (default: same origin, `/api`). The
+Vite dev server proxies `/api` to `VITE_API_PROXY_TARGET` (default
+`http://127.0.0.1:8000`), so the browser never calls `localhost` directly and the
+app works behind a proxy or in a hosted preview.
+
+```bash
+cd frontend
+npm install
+npm run dev      # http://localhost:5173
+npm run build    # production bundle
+npx vitest run   # unit + component tests
+```
+
+## Data sources and status
+
+Status reflects what is implemented and tested in this repository, not what the
+upstream service can theoretically provide.
+
+| Source | Key required | Status | Notes |
+| --- | --- | --- | --- |
+| RSS (configurable feed list) | no | implemented | Per-feed fetching, per-feed error isolation |
+| GDELT | no | implemented | Document API, 250-record pages |
+| Google News RSS | no | implemented | Query-based RSS |
+| USGS earthquakes | no | implemented | Structured observations (`is_structured_observation`) |
+| ReliefWeb | no | implemented | Humanitarian reports API |
+| WHO disease outbreak news | no | implemented | Public RSS |
+| NASA FIRMS | `FIRMS_MAP_KEY` | implemented, needs external config | Reports `not_configured` until the key is set |
+| CAP alert feeds | feed URLs | implemented, needs external config | Validated on ingest |
+| ACLED | licensed account | implemented, blocked on licensing | Never enabled by default; not tested against a live account |
+| Ollama (AI assessment) | local model | optional | Lazy import; the platform is fully functional without it |
+
+Provider health states are `healthy`, `idle`, `degraded`, `unavailable`,
+`not_configured` and `disabled`. Only a provider with at least one successful
+run is reported as healthy — a configured but never-run provider is `idle`.
+
+## API surface added in this iteration
+
+- `GET /api/map/events` — precision-aware map layer with coverage counts
+- `GET /api/dashboard/overview`
+- `GET /api/events` (cursor pagination, filters, sorts), `GET /api/events/{id}`
+- `GET /api/providers`, `GET /api/providers/history`
+- `GET /api/countries`, `GET /api/countries/{code}/risk`
+- `GET /api/anomalies`, `POST /api/anomalies/{id}/dismiss`
+- `GET /api/entities`, `GET /api/entities/{id}`
+- `GET /api/alerts`, `POST /api/alerts/{id}/status`, `GET|POST|DELETE /api/alert-rules`
+- `GET|POST|DELETE /api/saved-searches`, `GET /api/search`
+- `POST /api/reports`, `GET /api/reports`, `GET /api/reports/{id}/export?format=csv|html`
+- `GET /api/system/status`, `GET /api/ingestion/status`
+
+## Known limitations
+
+- PDF export is not implemented. HTML export prints cleanly to PDF from the
+  browser, and the UI says so instead of offering a broken button.
+- Alert delivery is in-app only (alert centre + toast). No email/webhook
+  transport is implemented yet.
+- Country indicators are descriptive statistics over collected reporting. They
+  are not a forecast and not comparable across countries with different
+  coverage.
+- Entity extraction is deterministic (gazetteer/pattern based); it will miss
+  actors outside its gazetteer.
+- Single-node SQLite deployment. Migrations are versioned and backed up before
+  destructive changes, but there is no replication.

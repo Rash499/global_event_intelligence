@@ -204,3 +204,31 @@ def test_openapi_is_available(client):
     schema = client.get("/openapi.json").json()
     assert schema["info"]["title"]
     assert "/api/events" in schema["paths"]
+
+
+def test_rate_limit_blocks_repeated_demo_seeding(client, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "demo_data_enabled", True)
+    statuses = [
+        client.post("/api/events/seed", json={"confirm": True}).status_code for _ in range(3)
+    ]
+    # Write bucket for the seed route is 2 requests per minute.
+    assert statuses[:2] == [200, 200]
+    assert statuses[2] == 429
+
+    blocked = client.post("/api/events/seed", json={"confirm": True})
+    assert blocked.headers["Retry-After"]
+    # The rate-limit response never echoes internals.
+    assert blocked.json() == {"detail": "Rate limit exceeded. Retry shortly."}
+
+
+def test_read_endpoints_report_remaining_budget(client):
+    response = client.get("/api/taxonomy")
+    assert response.status_code == 200
+    assert int(response.headers["X-RateLimit-Remaining"]) >= 0
+
+
+def test_health_is_never_rate_limited(client):
+    for _ in range(300):
+        assert client.get("/api/health").status_code == 200
