@@ -1,3 +1,8 @@
+"""Manual smoke script for the optional Ollama integration.
+
+Not collected by pytest. Run with `python scripts/try_ollama_analysis.py`
+when Ollama and the `ollama` package are available.
+"""
 from app.ai.ollama import analyze_article
 
 

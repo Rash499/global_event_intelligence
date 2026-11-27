@@ -1,13 +1,30 @@
+"""Optional Ollama integration.
+
+The ``ollama`` client package is an **optional** dependency: the platform must
+import and run without it (deterministic classification is the default path).
+Previously this module imported ``ollama`` at module scope, which made the whole
+ingestion service fail to import on any machine without the package.
+"""
+
+import asyncio
 import json
+import logging
 import re
 
-import ollama
-
+from ..config import settings
 from .prompts import EVENT_ANALYSIS_PROMPT
 from .schemas import EventAnalysis
 
+logger = logging.getLogger(__name__)
 
-MODEL_NAME = "llama3.2:3b"
+try:  # pragma: no cover - exercised by the presence/absence of the package
+    import ollama as _ollama
+except ImportError:  # pragma: no cover
+    _ollama = None
+
+
+OLLAMA_AVAILABLE = _ollama is not None
+MODEL_NAME = settings.ollama_model
 
 
 def clean_json_response(response: str) -> str:
@@ -60,13 +77,17 @@ async def analyze_with_ollama(
         url=url,
     )
 
-    # The ollama Python client is synchronous,
-    # so run it through asyncio's thread executor
-    # to avoid blocking FastAPI.
-    import asyncio
+    if _ollama is None:
+        raise RuntimeError(
+            "The optional `ollama` package is not installed; install it with "
+            "`pip install ollama` to enable AI analysis."
+        )
+
+    # The ollama Python client is synchronous, so run it through asyncio's
+    # thread executor to avoid blocking FastAPI.
 
     def run_ollama():
-        return ollama.chat(
+        return _ollama.chat(
             model=MODEL_NAME,
             messages=[
                 {

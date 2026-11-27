@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches: [master, "arena/**"]
+  pull_request:
+    branches: [master]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Show environment
+        run: |
+          python -V
+          pip -V
+          grep -vE '^\s*(#|$)' requirements.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          python -m pip list
+      - name: Run tests
+        env:
+          ENVIRONMENT: development
+          DEMO_DATA_ENABLED: "false"
+        run: |
+          set +e
+          python -m pytest -q -rf > /tmp/pytest.log 2>&1
+          status=$?
+          tail -c 12000 /tmp/pytest.log
+          if [ $status -ne 0 ]; then
+            {
+              echo "## pytest failures"
+              echo '```'
+              grep -E "^(FAILED|ERROR)|assert|Error" /tmp/pytest.log | head -40
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            grep -E "^(FAILED|ERROR)" /tmp/pytest.log | head -10 | while IFS= read -r line; do
+              echo "::error title=pytest::$line"
+            done
+          fi
+          exit $status
+
+  frontend:
+    name: Frontend checks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # jsdom 30 (vitest environment) requires Node ^22.22.2 || ^24.15.0.
+          # Pinning Node 20 made vitest fail at startup while loading undici,
+          # before any test ran. Keep this in sync with `engines` in
+          # frontend/package.json.
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Show environment
+        run: |
+          node -v
+          npm -v
+          node -e "console.log(require('./package.json').devDependencies)"
+      - name: Install dependencies
+        # `npm ci` installs exactly the committed lockfile, so CI tests the
+        # same dependency tree developers run locally. The lockfile is kept
+        # in sync with package.json (verified by `npm ci` succeeding).
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck
+        run: npx tsc -b
+      - name: Unit tests
+        run: |
+          set +e
+          npx vitest run > /tmp/vitest.log 2>&1
+          status=$?
+          tail -c 8000 /tmp/vitest.log
+          if [ $status -ne 0 ]; then
+            # Always annotate with the tail: a config/startup failure has no
+            # "FAIL" line, and an empty annotation hides the cause.
+            tail -c 1200 /tmp/vitest.log | while IFS= read -r line; do
+              [ -n "$line" ] && echo "::error title=vitest::$line"
+            done
+          fi
+          exit $status
+      - name: Production build
+        run: npm run build

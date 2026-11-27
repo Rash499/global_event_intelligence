@@ -4,3 +4,9 @@ httpx==0.28.1
 feedparser==6.0.11
 pydantic-settings==2.10.1
 email-validator==2.2.0
+# Optional: only needed when OLLAMA_ENABLED=true (the platform imports and runs
+# without it; deterministic classification is the default path).
+# ollama==0.6.1
+# Testing
+pytest==8.4.2
+pytest-asyncio==1.2.0

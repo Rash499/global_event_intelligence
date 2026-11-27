@@ -1,9 +1,18 @@
 import axios from "axios";
 import { getAuthToken } from "./authSession.jsx";
 
+/**
+ * The API base URL is configuration, not a hardcoded localhost address. In
+ * development Vite proxies /api to the FastAPI server (see vite.config.ts), so
+ * relative URLs keep working inside the sandbox preview and behind any origin.
+ * Set VITE_API_BASE_URL to point the app at a remote backend.
+ */
+const API_BASE_URL = (import.meta.env?.VITE_API_BASE_URL || "").replace(/\/$/, "") || "";
+const DEFAULT_TIMEOUT = Number(import.meta.env?.VITE_API_TIMEOUT_MS) || 30000;
+
 export const api = axios.create({
-  baseURL: "http://localhost:8000/api",
-  timeout: 30000,
+  baseURL: `${API_BASE_URL}/api`,
+  timeout: DEFAULT_TIMEOUT,
 });
 
 api.interceptors.request.use((config) => {
@@ -187,5 +196,143 @@ export const compareHistoricalPeriods = async (periodA, periodB, scope = {}) => 
     period_b: periodB,
     scope,
   });
+  return response.data;
+};
+
+/* ------------------------------------------------------------------ *
+ * Intelligence platform endpoints (Phase 1-4)
+ * ------------------------------------------------------------------ */
+
+export const getDashboardOverview = async (hours = 24) => {
+  const response = await api.get("/dashboard/overview", { params: { hours } });
+  return response.data;
+};
+
+export const getMapEvents = async (params = {}) => {
+  const response = await api.get("/map/events", { params });
+  return response.data;
+};
+
+export const getIngestionStatus = async () => {
+  const response = await api.get("/ingestion/status");
+  return response.data;
+};
+
+export const getEventsPage = async (params = {}) => {
+  const response = await api.get("/events", { params });
+  return response.data;
+};
+
+export const getTaxonomy = async () => {
+  const response = await api.get("/taxonomy");
+  return response.data;
+};
+
+export const getProviders = async (history = false) => {
+  const response = await api.get("/providers", { params: { history } });
+  return response.data;
+};
+
+export const getProviderHistory = async (provider, limit = 50) => {
+  const response = await api.get("/providers/history", { params: { provider, limit } });
+  return response.data;
+};
+
+export const getCountryRisk = async (countryCode, days = 30) => {
+  const response = await api.get(`/countries/${countryCode}/risk`, { params: { days } });
+  return response.data;
+};
+
+export const getCountriesSummary = async (days = 30) => {
+  const response = await api.get("/countries", { params: { days } });
+  return response.data;
+};
+
+export const getAnomalies = async (includeDismissed = false) => {
+  const response = await api.get("/anomalies", { params: { include_dismissed: includeDismissed } });
+  return response.data;
+};
+
+export const dismissAnomaly = async (anomalyId) => {
+  await api.post(`/anomalies/${anomalyId}/dismiss`);
+};
+
+export const unifiedSearch = async (query) => {
+  const response = await api.get("/search", { params: { q: query } });
+  return response.data;
+};
+
+export const getEntities = async (params = {}) => {
+  const response = await api.get("/entities", { params });
+  return response.data;
+};
+
+export const getEntity = async (entityId) => {
+  const response = await api.get(`/entities/${entityId}`);
+  return response.data;
+};
+
+export const getAlerts = async (status) => {
+  const response = await api.get("/alerts", { params: status ? { status } : {} });
+  return response.data;
+};
+
+export const updateAlertStatus = async (alertId, status) => {
+  const response = await api.post(`/alerts/${alertId}/status`, { status });
+  return response.data;
+};
+
+export const getAlertRules = async () => {
+  const response = await api.get("/alert-rules");
+  return response.data;
+};
+
+export const createAlertRule = async (rule) => {
+  const response = await api.post("/alert-rules", rule);
+  return response.data;
+};
+
+export const deleteAlertRule = async (ruleId) => {
+  await api.delete(`/alert-rules/${ruleId}`);
+};
+
+export const getSavedSearches = async () => {
+  const response = await api.get("/saved-searches");
+  return response.data;
+};
+
+export const createSavedSearch = async (payload) => {
+  const response = await api.post("/saved-searches", payload);
+  return response.data;
+};
+
+export const deleteSavedSearch = async (searchId) => {
+  await api.delete(`/saved-searches/${searchId}`);
+};
+
+export const generateReport = async (payload) => {
+  const response = await api.post("/reports", payload, { timeout: 120000 });
+  return response.data;
+};
+
+export const listReports = async () => {
+  const response = await api.get("/reports");
+  return response.data;
+};
+
+export const reportExportUrl = (reportId, format = "csv") =>
+  `${API_BASE_URL}/api/reports/${reportId}/export?format=${format}`;
+
+export const getSystemStatus = async () => {
+  const response = await api.get("/system/status");
+  return response.data;
+};
+
+export const runProviderIngestion = async (provider) => {
+  const response = await api.post(
+    `/ingestion/run?providers=${encodeURIComponent(provider)}`,
+    {},
+    { timeout: 300000 }
+  );
   return response.data;
 };
