@@ -13,6 +13,11 @@ const PRECISION_MODES = [
   { id: "all", label: "Everything" },
 ];
 
+const SCOPES = [
+  { id: "major", label: "Major events" },
+  { id: "all", label: "All events" },
+];
+
 const LEGEND = [
   { label: "Critical ≥ 8.5", value: 9 },
   { label: "High ≥ 6.5", value: 7 },
@@ -41,6 +46,10 @@ export default function MapView({
   initialFilters,
 }) {
   const [precision, setPrecision] = useState("all");
+  // Default view: all major events of the last 7 days. "Major" is defined by
+  // the backend (severity >= 6.5 or importance >= 8) and echoed back in
+  // `major_definition`, so the map never shows an unexplained subset.
+  const [scope, setScope] = useState("major");
   const [days, setDays] = useState(7);
   const [category, setCategory] = useState(initialFilters?.category || "");
   const [minSeverity, setMinSeverity] = useState("");
@@ -50,11 +59,12 @@ export default function MapView({
       getMapEvents({
         days,
         precision,
-        limit: 500,
+        limit: scope === "major" ? 2000 : 500,
+        ...(scope === "major" ? { major_only: true } : {}),
         ...(category ? { category } : {}),
         ...(minSeverity !== "" ? { min_severity: Number(minSeverity) } : {}),
       }),
-    [days, precision, category, minSeverity]
+    [days, precision, category, minSeverity, scope]
   );
 
   const items = layer.data?.items || [];
@@ -105,7 +115,9 @@ export default function MapView({
           <p className="ws-subtitle">
             {mode === "weather"
               ? "Country conditions from Open-Meteo. The severity index is an application score, not an official warning."
-              : "Pins are plotted only where a source reported coordinates. Country-level events are shaded, not pinned."}
+              : scope === "major"
+                ? `All major events from the last ${days} days (${layer.data?.major_definition || "severity ≥ 6.5 or importance ≥ 8"}). Pins only where a source reported coordinates; country-level events are shaded, not pinned.`
+                : "Pins are plotted only where a source reported coordinates. Country-level events are shaded, not pinned."}
           </p>
         </div>
         <div className="ws-head-meta">
@@ -117,6 +129,20 @@ export default function MapView({
       {mode === "events" && (
         <Panel className="ws-filter-panel">
           <Toolbar>
+            <fieldset className="ws-segmented">
+              <legend>Event scope</legend>
+              {SCOPES.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  aria-pressed={scope === option.id}
+                  className={scope === option.id ? "is-active" : ""}
+                  onClick={() => setScope(option.id)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </fieldset>
             <fieldset className="ws-segmented">
               <legend>Location precision</legend>
               {PRECISION_MODES.map((option) => (
@@ -191,7 +217,8 @@ export default function MapView({
               <div><dt>Plotted pins</dt><dd>{formatNumber(plottable.length)}</dd></div>
               <div><dt>Country-level events</dt><dd>{formatNumber(countryLevel.length)}</dd></div>
               <div><dt>Unknown location</dt><dd>{formatNumber(unknownLocation.length)}</dd></div>
-              <div><dt>Rows fetched</dt><dd>{formatNumber(items.length)} (cap 500)</dd></div>
+              <div><dt>Scope</dt><dd>{scope === "major" ? `major events · last ${days}d` : `all events · last ${days}d`}</dd></div>
+              <div><dt>Rows fetched</dt><dd>{formatNumber(items.length)} (cap {scope === "major" ? 2000 : 500})</dd></div>
             </dl>
             {layer.data?.coverage && (
               <p className="ws-muted ws-small">
@@ -247,7 +274,9 @@ export default function MapView({
 
           {items.length === 0 && !layer.loading && !layer.error && (
             <Empty title="Nothing to plot in this window">
-              No stored events match these filters. The map shows only collected reporting.
+              {scope === "major"
+                ? `No major events (${layer.data?.major_definition || "severity ≥ 6.5 or importance ≥ 8"}) were stored in the last ${days} days matching these filters. Switch to All events or widen the window.`
+                : "No stored events match these filters. The map shows only collected reporting."}
             </Empty>
           )}
         </aside>
