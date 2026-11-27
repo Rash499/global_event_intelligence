@@ -23,7 +23,12 @@ from pydantic import BaseModel, Field
 
 from ..config import settings
 from ..database.db import get_connection, write_connection
-from ..intelligence.taxonomy import TAXONOMY, TAXONOMY_VERSION, taxonomy_payload
+from ..intelligence.taxonomy import (
+    TAXONOMY,
+    TAXONOMY_VERSION,
+    category_label,
+    taxonomy_payload,
+)
 from ..intelligence.geolocation import COUNTRY_BY_CODE, coordinate_for_country
 from .auth import get_optional_user
 
@@ -402,8 +407,117 @@ def country_risk(
             """,
             (code,),
         ).fetchone()[0]
+
+        # Movement: fixed 24h / 7d windows against the immediately preceding
+        # equal windows, independent of the selected period, so "rising" and
+        # "falling" always mean the same comparison. Counts of stored events
+        # only - a fall can mean less reporting, not a calmer country.
+        now_dt = datetime.now(timezone.utc)
+
+        def count_between(start_iso: str, end_iso: str | None = None) -> int:
+            sql = (
+                "SELECT COUNT(*) FROM events WHERE country_code = ? "
+                "AND julianday(COALESCE(occurred_at, event_time, created_at)) >= julianday(?)"
+            )
+            window_params: list = [code, start_iso]
+            if end_iso is not None:
+                sql += (
+                    " AND julianday(COALESCE(occurred_at, event_time, created_at)) < julianday(?)"
+                )
+                window_params.append(end_iso)
+            return conn.execute(sql, window_params).fetchone()[0]
+
+        movement = {
+            "events_24h": count_between(_iso(now_dt - timedelta(hours=24))),
+            "events_previous_24h": count_between(
+                _iso(now_dt - timedelta(hours=48)), _iso(now_dt - timedelta(hours=24))
+            ),
+            "events_7d": count_between(_iso(now_dt - timedelta(days=7))),
+            "events_previous_7d": count_between(
+                _iso(now_dt - timedelta(days=14)), _iso(now_dt - timedelta(days=7))
+            ),
+        }
+
+        # Seven-day daily activity by taxonomy category. The frontend groups
+        # categories into map layers for the lane display; the API stays at
+        # category granularity so no grouping decision is baked in twice.
+        timeline_rows = [
+            dict(row)
+            for row in conn.execute(
+                """
+                SELECT substr(COALESCE(occurred_at, event_time, created_at), 1, 10) AS day,
+                       category, COUNT(*) AS events, MAX(severity) AS max_severity
+                FROM events
+                WHERE country_code = ?
+                  AND julianday(COALESCE(occurred_at, event_time, created_at)) >= julianday(?)
+                GROUP BY day, category
+                """,
+                (code, _iso(now_dt - timedelta(days=7))),
+            ).fetchall()
+        ]
     finally:
         conn.close()
+
+    by_day: dict[str, dict] = {}
+    for row in timeline_rows:
+        day = by_day.setdefault(
+            row["day"], {"date": row["day"], "total": 0, "max_severity": None, "by_category": {}}
+        )
+        day["total"] += row["events"]
+        if row["max_severity"] is not None:
+            day["max_severity"] = (
+                row["max_severity"]
+                if day["max_severity"] is None
+                else max(day["max_severity"], row["max_severity"])
+            )
+        if row["category"]:
+            day["by_category"][row["category"]] = {
+                "events": row["events"],
+                "max_severity": row["max_severity"],
+            }
+    timeline_days = []
+    for offset in range(6, -1, -1):
+        date_key = (now_dt - timedelta(days=offset)).strftime("%Y-%m-%d")
+        timeline_days.append(
+            by_day.get(
+                date_key,
+                {"date": date_key, "total": 0, "max_severity": None, "by_category": {}},
+            )
+        )
+
+    # Active signals: the reporting categories actually present in the
+    # selected period, ranked by their worst severity. Absence of a signal
+    # means nothing was collected in that category - not that it is quiet.
+    signal_map: dict[str, dict] = {}
+    for row in rows:
+        category = row.get("category")
+        if not category:
+            continue
+        signal = signal_map.setdefault(
+            category,
+            {
+                "category": category,
+                "label": category_label(category),
+                "event_count": 0,
+                "max_severity": None,
+                "latest_at": None,
+            },
+        )
+        signal["event_count"] += 1
+        if row.get("severity") is not None:
+            signal["max_severity"] = (
+                row["severity"]
+                if signal["max_severity"] is None
+                else max(signal["max_severity"], row["severity"])
+            )
+        occurred = row.get("occurred_at")
+        if occurred and (signal["latest_at"] is None or occurred > signal["latest_at"]):
+            signal["latest_at"] = occurred
+    active_signals = sorted(
+        signal_map.values(),
+        key=lambda s: (s["max_severity"] or 0, s["event_count"]),
+        reverse=True,
+    )[:8]
 
     dimensions = []
     for name, categories in COUNTRY_DIMENSIONS.items():
@@ -458,6 +572,9 @@ def country_risk(
         "publishers": publisher_count,
         "coverage": {"level": coverage_level, "note": coverage_note},
         "dimensions": dimensions,
+        "movement": movement,
+        "timeline": {"window_days": 7, "days": timeline_days},
+        "active_signals": active_signals,
         "recent_events": rows[:20],
         "methodology": (
             "Indicators are counts and severity averages of stored events within the "
@@ -495,8 +612,39 @@ def countries_summary(days: int = Query(30, ge=1, le=365)):
                 (since,),
             ).fetchall()
         ]
+        # Fixed-window trend (last 24h, last 7d vs the previous 7d), computed
+        # over the same fixed windows for every country regardless of the
+        # selected period so rows stay comparable.
+        trend_by_code = {
+            row["country_code"]: dict(row)
+            for row in conn.execute(
+                """
+                SELECT country_code,
+                       SUM(CASE WHEN julianday(COALESCE(occurred_at, event_time, created_at)) >= julianday('now', '-24 hours') THEN 1 ELSE 0 END) AS events_24h,
+                       SUM(CASE WHEN julianday(COALESCE(occurred_at, event_time, created_at)) >= julianday('now', '-7 days') THEN 1 ELSE 0 END) AS events_7d,
+                       SUM(CASE WHEN julianday(COALESCE(occurred_at, event_time, created_at)) >= julianday('now', '-14 days')
+                                 AND julianday(COALESCE(occurred_at, event_time, created_at)) < julianday('now', '-7 days') THEN 1 ELSE 0 END) AS events_previous_7d
+                FROM events
+                WHERE country_code IS NOT NULL
+                GROUP BY country_code
+                """
+            ).fetchall()
+        }
     finally:
         conn.close()
+    for row in rows:
+        raw_trend = trend_by_code.get(row["country_code"], {})
+        trend = {
+            key: raw_trend.get(key, 0) or 0
+            for key in ("events_24h", "events_7d", "events_previous_7d")
+        }
+        if trend["events_7d"] > trend["events_previous_7d"]:
+            direction = "rising"
+        elif trend["events_7d"] < trend["events_previous_7d"]:
+            direction = "falling"
+        else:
+            direction = "steady"
+        row["trend"] = {**trend, "direction": direction}
     return {"items": rows, "count": len(rows), "period_days": days}
 
 

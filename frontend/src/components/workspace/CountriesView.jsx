@@ -3,7 +3,57 @@ import { useCallback, useState } from "react";
 import { getCountriesSummary, getCountryRisk } from "../../services/api.jsx";
 import { formatCount, formatNumber, severityColour } from "../../services/format.jsx";
 import useApiResource from "../../hooks/useApiResource";
+import { MAP_LAYERS } from "../globe/mapLayers.jsx";
 import { Badge, DataTable, Empty, ErrorState, Explain, Loading, Meter, Panel, SourceNote, Stat } from "./primitives.jsx";
+
+const TREND_ARROWS = { rising: "▲", falling: "▼", steady: "→" };
+
+/** 7-day lanes × days activity grid, grouped by the map layer registry. */
+function LaneTimeline({ timeline }) {
+  const days = timeline?.days || [];
+  if (!days.length) return null;
+  return (
+    <div className="ws-lane-timeline">
+      <div className="ws-lane-row ws-lane-head" aria-hidden="true">
+        <span />
+        {days.map((day) => (
+          <span key={day.date} title={day.date}>{day.date.slice(5)}</span>
+        ))}
+      </div>
+      {MAP_LAYERS.map((layer) => (
+        <div className="ws-lane-row" key={layer.id}>
+          <span className="ws-lane-label">{layer.glyph} {layer.label}</span>
+          {days.map((day) => {
+            let events = 0;
+            let maxSeverity = null;
+            for (const category of layer.categories) {
+              const cell = day.by_category?.[category];
+              if (!cell) continue;
+              events += cell.events || 0;
+              if (cell.max_severity != null) {
+                maxSeverity = maxSeverity == null ? cell.max_severity : Math.max(maxSeverity, cell.max_severity);
+              }
+            }
+            return (
+              <span
+                key={day.date}
+                className="ws-lane-cell"
+                style={events ? { background: `${severityColour(maxSeverity)}38`, color: "var(--text)" } : undefined}
+                title={
+                  events
+                    ? `${layer.label} · ${day.date}: ${events} stored event${events === 1 ? "" : "s"}, max severity ${maxSeverity == null ? "not assessed" : formatNumber(maxSeverity, 1)}`
+                    : `${layer.label} · ${day.date}: nothing collected`
+                }
+              >
+                {events || "·"}
+              </span>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 const DIMENSION_LABELS = {
   conflict_security: "Conflict & security",
@@ -106,6 +156,20 @@ export default function CountriesView({ initialSelection, onSelectEvent }) {
                   render: (row) => (row.average_severity == null ? "—" : formatNumber(row.average_severity, 2)),
                 },
                 { key: "developing", label: "Developing", align: "right", render: (row) => formatNumber(row.developing) },
+                {
+                  key: "trend",
+                  label: "7d trend",
+                  align: "right",
+                  render: (row) =>
+                    row.trend ? (
+                      <span title={`Last 24h: ${row.trend.events_24h} · last 7d: ${row.trend.events_7d} vs previous 7d: ${row.trend.events_previous_7d} (stored reporting volume)`}>
+                        {TREND_ARROWS[row.trend.direction] || "→"} {formatNumber(row.trend.events_7d)}
+                        <span className="ws-muted"> / {formatNumber(row.trend.events_previous_7d)}</span>
+                      </span>
+                    ) : (
+                      "—"
+                    ),
+                },
               ]}
             />
           )}
@@ -125,11 +189,39 @@ export default function CountriesView({ initialSelection, onSelectEvent }) {
                   <Stat label="Events" value={risk.data.total_events} />
                   <Stat label="Articles" value={risk.data.articles} />
                   <Stat label="Publishers" value={risk.data.publishers} />
+                  <Stat label="Events · 24h" value={risk.data.movement?.events_24h} />
+                  <Stat label="Events · 7d" value={risk.data.movement?.events_7d} />
                 </div>
+                {risk.data.movement && (
+                  <p className="ws-muted ws-small">
+                    Movement compares stored reporting volume: previous 24h{" "}
+                    {formatNumber(risk.data.movement.events_previous_24h)} events, previous 7d{" "}
+                    {formatNumber(risk.data.movement.events_previous_7d)} events. A rise or fall can
+                    reflect collection volume as much as conditions on the ground.
+                  </p>
+                )}
                 <p className={`ws-coverage-note tone-${COVERAGE_TONE[coverage?.level] || "muted"}`}>
                   <strong>Coverage: {coverage?.level || "unknown"}.</strong> {coverage?.note}
                 </p>
               </Panel>
+
+              {(risk.data.active_signals || []).length > 0 && (
+                <Panel title="Active signals" eyebrow="REPORTING CATEGORIES PRESENT">
+                  <ul className="ws-chip-row ws-signal-chips">
+                    {risk.data.active_signals.map((signal) => (
+                      <li key={signal.category} className="ws-signal-chip">
+                        <i style={{ background: severityColour(signal.max_severity) }} aria-hidden="true" />
+                        {signal.label} · {formatCount(signal.event_count, "event")} · max{" "}
+                        {signal.max_severity == null ? "not assessed" : formatNumber(signal.max_severity, 1)}
+                      </li>
+                    ))}
+                  </ul>
+                  <SourceNote>
+                    A signal means reporting in that category was collected in this period. A missing
+                    signal means nothing was collected — not that the category is quiet.
+                  </SourceNote>
+                </Panel>
+              )}
 
               <Panel title="Indicators" eyebrow="BY DIMENSION">
                 <ul className="ws-dimension-list">
@@ -142,6 +234,19 @@ export default function CountriesView({ initialSelection, onSelectEvent }) {
                       {dimension.event_count === 0 ? (
                         <p className="ws-muted ws-small">No events in this dimension — reporting gap or genuine quiet, not distinguishable from the data alone.</p>
                       ) : (
+                        <>
+                        <div
+                          className="ws-dimension-countbar"
+                          role="img"
+                          aria-label={`${formatCount(dimension.event_count, "event")} of ${formatCount(risk.data.total_events, "event")} in this period`}
+                          title="Share of this country's stored events in the period"
+                        >
+                          <span
+                            style={{
+                              width: `${Math.max(3, Math.round((dimension.event_count / Math.max(1, risk.data.total_events)) * 100))}%`,
+                            }}
+                          />
+                        </div>
                         <Meter
                           value={dimension.average_severity || 0}
                           max={10}
@@ -149,11 +254,22 @@ export default function CountriesView({ initialSelection, onSelectEvent }) {
                           label={`${DIMENSION_LABELS[dimension.dimension] || dimension.dimension} mean severity`}
                           caption={`mean ${formatNumber(dimension.average_severity, 2)} · max ${formatNumber(dimension.max_severity, 1)} · ${formatCount(dimension.developing_events, "developing")}`}
                         />
+                        </>
                       )}
                     </li>
                   ))}
                 </ul>
               </Panel>
+
+              {risk.data.timeline && (
+                <Panel title="7-day activity" eyebrow="STORED EVENTS BY LAYER AND DAY">
+                  <LaneTimeline timeline={risk.data.timeline} />
+                  <SourceNote>
+                    Each cell counts stored events in that map layer on that day (hover for the worst
+                    severity). Empty cells mean nothing was collected that day.
+                  </SourceNote>
+                </Panel>
+              )}
 
               <Panel title="Recent events" eyebrow="INPUT EVIDENCE">
                 {(risk.data.recent_events || []).length === 0 ? (
