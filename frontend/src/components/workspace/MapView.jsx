@@ -5,6 +5,14 @@ import WeatherModeToggle from "../weather/WeatherModeToggle.jsx";
 import useApiResource from "../../hooks/useApiResource";
 import { getMapEvents } from "../../services/api.jsx";
 import { formatCount, formatNumber, isPlottable, severityColour, severityBand } from "../../services/format.jsx";
+import { formatRelativeTime } from "../../services/dateFormat.jsx";
+import {
+  ALL_LAYER_IDS,
+  MAP_LAYERS,
+  categoriesForLayers,
+  layerFreshness,
+} from "../globe/mapLayers.jsx";
+import { clusterMapPoints } from "../globe/mapClustering.jsx";
 import { Badge, ErrorState, Empty, Loading, Panel, SourceNote, Toolbar, UpdatedAt } from "./primitives.jsx";
 
 const PRECISION_MODES = [
@@ -53,6 +61,27 @@ export default function MapView({
   const [days, setDays] = useState(7);
   const [category, setCategory] = useState(initialFilters?.category || "");
   const [minSeverity, setMinSeverity] = useState("");
+  // Map layers (registry in ../globe/mapLayers.jsx): all on by default. The
+  // selection is sent to the backend as a taxonomy `categories` filter so
+  // pins, country shading and coverage figures all agree.
+  const [enabledLayers, setEnabledLayers] = useState(ALL_LAYER_IDS);
+  const [clustering, setClustering] = useState(true);
+  const [selectedCluster, setSelectedCluster] = useState(null);
+
+  const allLayersOn = enabledLayers.length === MAP_LAYERS.length;
+  const categoriesParam = useMemo(
+    () => (allLayersOn ? null : categoriesForLayers(enabledLayers).join(",")),
+    [allLayersOn, enabledLayers]
+  );
+
+  const toggleLayer = useCallback((layerId) => {
+    setSelectedCluster(null);
+    setEnabledLayers((current) =>
+      current.includes(layerId)
+        ? current.filter((id) => id !== layerId)
+        : [...current, layerId]
+    );
+  }, []);
 
   const layer = useApiResource(
     () =>
@@ -61,10 +90,11 @@ export default function MapView({
         precision,
         limit: scope === "major" ? 2000 : 500,
         ...(scope === "major" ? { major_only: true } : {}),
+        ...(categoriesParam !== null ? { categories: categoriesParam } : {}),
         ...(category ? { category } : {}),
         ...(minSeverity !== "" ? { min_severity: Number(minSeverity) } : {}),
       }),
-    [days, precision, category, minSeverity, scope]
+    [days, precision, category, minSeverity, scope, categoriesParam]
   );
 
   const items = layer.data?.items || [];
@@ -80,10 +110,11 @@ export default function MapView({
         days,
         precision,
         limit: 500,
+        ...(categoriesParam !== null ? { categories: categoriesParam } : {}),
         ...(category ? { category } : {}),
         ...(minSeverity !== "" ? { min_severity: Number(minSeverity) } : {}),
       }),
-    [days, precision, category, minSeverity],
+    [days, precision, category, minSeverity, categoriesParam],
     { enabled: majorEmpty }
   );
   const fallbackActive = majorEmpty && (fallbackLayer.data?.items || []).length > 0;
@@ -147,17 +178,40 @@ export default function MapView({
     [shading, precision]
   );
 
+  // Nearby pins are merged into disclosed cluster markers (position = the
+  // average of the reported locations) so dense regions stay readable.
+  // Aggregates are appended unclustered: they are already country rollups.
+  const pinPoints = useMemo(
+    () => (clustering ? clusterMapPoints(plottable) : plottable),
+    [clustering, plottable]
+  );
+  const clusterPoints = useMemo(
+    () => pinPoints.filter((point) => point.is_cluster),
+    [pinPoints]
+  );
+
   const globeEvents = useMemo(
-    () => [...plottable, ...aggregatePoints],
-    [plottable, aggregatePoints]
+    () => [...pinPoints, ...aggregatePoints],
+    [pinPoints, aggregatePoints]
+  );
+
+  const freshness = displayData?.freshness;
+  const layerStats = useMemo(
+    () => layerFreshness(freshness?.category_freshness || []),
+    [freshness]
   );
 
   const handleGlobeSelect = useCallback(
     (event) => {
+      if (event?.is_cluster) {
+        setSelectedCluster(event);
+        return;
+      }
       if (event?.is_country_aggregate) {
         onSelectCountry?.({ code: event.country_code, name: event.country });
         return;
       }
+      setSelectedCluster(null);
       onSelectEvent?.(event);
     },
     [onSelectEvent, onSelectCountry]
@@ -277,6 +331,73 @@ export default function MapView({
         </div>
 
         <aside className="ws-map-aside">
+          {mode === "events" && (
+            <Panel title="Map layers" eyebrow="STORED EVENT LAYERS">
+              <ul className="ws-layer-list">
+                {MAP_LAYERS.map((mapLayer) => {
+                  const on = enabledLayers.includes(mapLayer.id);
+                  const stats = layerStats[mapLayer.id] || { events: 0, latest_event_at: null };
+                  return (
+                    <li key={mapLayer.id}>
+                      <button
+                        type="button"
+                        aria-pressed={on}
+                        className={on ? "is-active" : ""}
+                        title={mapLayer.description}
+                        onClick={() => toggleLayer(mapLayer.id)}
+                      >
+                        <span aria-hidden="true">{mapLayer.glyph}</span> {mapLayer.label}
+                      </button>
+                      <span className="ws-muted">
+                        {formatCount(stats.events, "event")}
+                        {stats.latest_event_at ? ` · ${formatRelativeTime(stats.latest_event_at)}` : ""}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+              <label className="ws-layer-toggle">
+                <input
+                  type="checkbox"
+                  checked={clustering}
+                  onChange={(event) => { setClustering(event.target.checked); setSelectedCluster(null); }}
+                />
+                Cluster nearby pins
+              </label>
+              <SourceNote>
+                Layers filter stored events by taxonomy category — no new data source is
+                fetched. Counts show events stored in this window per layer, with the
+                most recent one. Latest event:{" "}
+                {freshness?.latest_event_at ? formatRelativeTime(freshness.latest_event_at) : "—"} ·
+                last collection:{" "}
+                {freshness?.latest_ingestion_at ? formatRelativeTime(freshness.latest_ingestion_at) : "—"}.
+              </SourceNote>
+            </Panel>
+          )}
+
+          {selectedCluster && (
+            <Panel title="Clustered events" eyebrow="NEARBY PINS GROUPED">
+              <p className="ws-muted ws-small">
+                These {formatCount(selectedCluster.cluster_count, "event")} were reported close
+                together; the marker sits at the average of their reported locations, which is
+                not itself an event location.
+              </p>
+              <ul className="ws-compact-list">
+                {(selectedCluster.events || []).map((event) => (
+                  <li key={event.id}>
+                    <button type="button" className="ws-link" onClick={() => onSelectEvent?.({ id: event.id, event })}>
+                      {event.title}
+                    </button>
+                    <span className="ws-muted">{event.country || event.country_code || ""}</span>
+                  </li>
+                ))}
+              </ul>
+              <button type="button" className="ws-button" onClick={() => setSelectedCluster(null)}>
+                Close cluster
+              </button>
+            </Panel>
+          )}
+
           <Panel title="Legend" eyebrow="SEVERITY BANDS">
             <ul className="ws-legend">
               {LEGEND.map((entry) => (
@@ -292,6 +413,8 @@ export default function MapView({
           <Panel title="Honest coverage" eyebrow="WHAT THIS MAP IS NOT SHOWING">
             <dl className="ws-facts">
               <div><dt>Plotted pins</dt><dd>{formatNumber(plottable.length)}</dd></div>
+              <div><dt>Pin clusters</dt><dd>{formatNumber(clusterPoints.length)}</dd></div>
+              <div><dt>Layers on</dt><dd>{enabledLayers.length}/{MAP_LAYERS.length}</dd></div>
               <div><dt>Country aggregates</dt><dd>{formatNumber(aggregatePoints.length)}</dd></div>
               <div><dt>Country-level events</dt><dd>{formatNumber(countryLevel.length)}</dd></div>
               <div><dt>Unknown location</dt><dd>{formatNumber(unknownLocation.length)}</dd></div>

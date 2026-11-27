@@ -462,6 +462,13 @@ page. The navigation groups reflect the workflow:
   `location_precision` supports a point (`exact`, `city`, `locality`, `region`).
   Events known only at country level are listed and shaded per country. The
   side panel always states how many events are *not* being plotted, and why.
+  A layer registry (`frontend/src/components/globe/mapLayers.jsx`) groups the
+  taxonomy into seven toggleable map layers; the selection is sent to the API
+  as a `categories` filter, and each layer shows its stored-event count and
+  the age of its newest event (`freshness` in the API response). Nearby pins
+  can be clustered into disclosed average-position markers (click to list the
+  member events). All map layers render already-collected events — no
+  additional external API is involved.
 - **Events** — server-side filtering and cursor pagination over
   `/api/events`, with saveable views (`/api/saved-searches`).
 - **Investigation** — `/api/events/{id}`: severity, confidence and priority as

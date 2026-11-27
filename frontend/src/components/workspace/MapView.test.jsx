@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 const globeProps = vi.fn();
@@ -56,6 +56,7 @@ vi.mock("../Globe.jsx", () => ({
 }));
 
 const { default: MapView } = await import("./MapView.jsx");
+const { getMapEvents } = await import("../../services/api.jsx");
 
 describe("MapView", () => {
   it("falls back to all events when no major events exist, and shades country-level events", async () => {
@@ -81,5 +82,35 @@ describe("MapView", () => {
     expect(lastProps.polygonEvents[0].country_code).toBe("LK");
 
     expect(screen.getByText(/Flooding displaces thousands/)).toBeInTheDocument();
+  });
+
+  it("offers registry layers and sends the selection as a categories filter", async () => {
+    getMapEvents.mockClear();
+    render(<MapView mode="events" />);
+    await waitFor(() =>
+      expect(screen.getByText(/showing all events in that window instead/i)).toBeInTheDocument()
+    );
+
+    // All seven registry layers are offered, plus the clustering toggle.
+    expect(screen.getByText("Map layers")).toBeInTheDocument();
+    expect(screen.getByLabelText(/Cluster nearby pins/)).toBeChecked();
+
+    fireEvent.click(screen.getByRole("button", { name: /Politics & unrest/ }));
+
+    // The refetch excludes the politics/unrest categories but keeps the rest.
+    await waitFor(() => {
+      const withCategories = getMapEvents.mock.calls
+        .map(([params]) => params)
+        .filter((params) => typeof params.categories === "string");
+      expect(withCategories.length).toBeGreaterThan(0);
+      const latest = withCategories.at(-1).categories;
+      expect(latest).not.toContain("political_development");
+      expect(latest).not.toContain("protest_unrest");
+      expect(latest).toContain("natural_disaster");
+    });
+    expect(screen.getByRole("button", { name: /Politics & unrest/ })).toHaveAttribute(
+      "aria-pressed",
+      "false"
+    );
   });
 });

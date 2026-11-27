@@ -67,6 +67,9 @@ export function getPolygonLabel(country, mode = "events", weather = []) {
 }
 
 export function getPointLabel(event) {
+  if (event.is_cluster) {
+    return `<div style="background:#07111f;color:white;padding:10px 14px;border-radius:8px;font-family:Arial;max-width:280px;"><strong>${event.cluster_count} events clustered in this area</strong><br/><small>Marker position is the average of the reported locations — not an event location. Click to list the events.</small></div>`;
+  }
   if (event.is_country_aggregate) {
     return `<div style="background:#07111f;color:white;padding:10px 14px;border-radius:8px;font-family:Arial;max-width:280px;"><strong>${event.title}</strong><br/><small>Country-level aggregate — exact locations not reported. Click to explore this country.</small></div>`;
   }
