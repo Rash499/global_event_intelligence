@@ -85,6 +85,9 @@ describe("location honesty", () => {
     expect(isPlottable({ latitude: 1, longitude: 2, location_precision: "city" })).toBe(true);
     expect(isPlottable({ latitude: 1, longitude: 2, location_precision: "exact" })).toBe(true);
     expect(isPlottable({ latitude: 1, longitude: 2, location_precision: "region" })).toBe(true);
+    // Backend-produced precisions with real coordinates must plot too.
+    expect(isPlottable({ latitude: 1, longitude: 2, location_precision: "approximate" })).toBe(true);
+    expect(isPlottable({ latitude: 1, longitude: 2, location_precision: "admin_region" })).toBe(true);
     // A country-level event must never become a pin even if coordinates leak in.
     expect(isPlottable({ latitude: 1, longitude: 2, location_precision: "country" })).toBe(false);
     expect(isPlottable({ latitude: null, longitude: null, location_precision: "city" })).toBe(false);

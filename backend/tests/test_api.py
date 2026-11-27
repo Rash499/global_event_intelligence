@@ -430,6 +430,31 @@ def test_map_layer_major_only_last_7_days(client, seeded, conn):
     assert len(everything["items"]) > len(body["items"])
 
 
+def test_map_layer_plots_approximate_and_admin_region_coordinates(client, conn):
+    """'near <city>' (approximate) and admin_region events carry real
+    coordinates and must be counted/plotted - a stale whitelist dropped them."""
+    rows = [
+        ("Quake near Tokyo", "JP", 35.67, 139.65, "approximate"),
+        ("Flooding in Bavaria region", "DE", 49.0, 11.4, "admin_region"),
+        ("Country only report", "LK", None, None, "country"),
+    ]
+    for title, code, lat, lon, precision in rows:
+        conn.execute(
+            """
+            INSERT INTO events (
+                title, summary, category, country, country_code, latitude,
+                longitude, location_precision, severity, importance,
+                occurred_at, event_time, created_at
+            ) VALUES (?, ?, 'natural_disaster', 'X', ?, ?, ?, ?, 7.0, 7, ?, ?, ?)
+            """,
+            (title, title, code, lat, lon, precision, _iso(2), _iso(2), _iso(2)),
+        )
+    body = client.get("/api/map/events?days=7&precision=coordinates").json()
+    precisions = {item["location_precision"] for item in body["items"]}
+    assert precisions == {"approximate", "admin_region"}
+    assert body["coverage"]["plotted_with_coordinates"] == 2
+
+
 def test_map_layer_rejects_unknown_precision(client, seeded):
     assert client.get("/api/map/events?precision=guessed").status_code == 422
 
