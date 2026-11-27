@@ -929,12 +929,26 @@ def export_report(
 # ----------------------------------------------------------------------
 # Map layer
 # ----------------------------------------------------------------------
+# "Major" on the map uses the platform's existing definitions, combined:
+# high/critical severity bands (severity >= 6.5) or the statistics layer's
+# major-event threshold (importance >= 8). Either signal qualifies, so an
+# event with a legacy importance score but no severity assessment (or vice
+# versa) is not silently dropped.
+MAJOR_SEVERITY_THRESHOLD = 6.5
+MAJOR_IMPORTANCE_THRESHOLD = 8
+MAJOR_DEFINITION = (
+    f"severity >= {MAJOR_SEVERITY_THRESHOLD} (high/critical) "
+    f"or importance >= {MAJOR_IMPORTANCE_THRESHOLD}"
+)
+
+
 @router.get("/map/events")
 def map_events(
     days: int = Query(7, ge=1, le=90),
     category: str | None = None,
     country_code: str | None = None,
     min_severity: float | None = Query(None, ge=0, le=10),
+    major_only: bool = Query(False),
     limit: int = Query(500, ge=1, le=2000),
     precision: str = Query("all", pattern="^(all|coordinates|country)$"),
     user=Depends(get_optional_user),
@@ -961,6 +975,11 @@ def map_events(
     if min_severity is not None:
         conditions.append("e.severity >= ?")
         params.append(min_severity)
+    if major_only:
+        conditions.append(
+            "(COALESCE(e.severity, 0) >= ? OR COALESCE(e.importance, 0) >= ?)"
+        )
+        params.extend([MAJOR_SEVERITY_THRESHOLD, MAJOR_IMPORTANCE_THRESHOLD])
     if precision == "coordinates":
         conditions.append("e.latitude IS NOT NULL AND e.longitude IS NOT NULL")
         conditions.append("e.location_precision IN ('exact','city','region','locality')")
@@ -1036,6 +1055,8 @@ def map_events(
     return {
         "generated_at": _iso(datetime.now(timezone.utc)),
         "window_days": days,
+        "major_only": major_only,
+        "major_definition": MAJOR_DEFINITION if major_only else None,
         "precision_mode": precision,
         "items": rows,
         "country_shading": country_rows,

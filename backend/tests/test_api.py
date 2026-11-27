@@ -401,6 +401,35 @@ def test_map_layer_precision_filter(client, seeded):
     assert {row["country_code"] for row in country["country_shading"]} <= {"LK", "BR"}
 
 
+def test_map_layer_major_only_last_7_days(client, seeded, conn):
+    # An old major event (10 days ago) must fall outside the 7-day window.
+    conn.execute(
+        """
+        INSERT INTO events (
+            title, summary, category, subcategory, country, country_code,
+            latitude, longitude, location_precision, severity, severity_label,
+            confidence, priority_score, priority_label, importance, event_state,
+            occurred_at, event_time, first_seen_at, last_seen_at, created_at
+        ) VALUES ('Old major quake', 'Old major quake', 'natural_disaster',
+                  'earthquake', 'Japan', 'JP', 35.0, 139.0, 'exact', 9.5,
+                  'critical', 0.9, 9.5, 'elevated', 9, 'ongoing',
+                  ?, ?, ?, ?, ?)
+        """,
+        (_iso(240), _iso(240), _iso(240), _iso(240), _iso(240)),
+    )
+    body = client.get("/api/map/events?days=7&major_only=true").json()
+    assert body["major_only"] is True
+    assert "severity >= 6.5" in body["major_definition"]
+    titles = {item["title"] for item in body["items"]}
+    # Only the recent severity-9.1/importance-9 earthquake qualifies; the
+    # moderate/minor recent events and the old major event are excluded.
+    assert titles == {"Magnitude 7.2 earthquake strikes Japan"}
+
+    everything = client.get("/api/map/events?days=7").json()
+    assert everything["major_only"] is False
+    assert len(everything["items"]) > len(body["items"])
+
+
 def test_map_layer_rejects_unknown_precision(client, seeded):
     assert client.get("/api/map/events?precision=guessed").status_code == 422
 
