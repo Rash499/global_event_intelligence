@@ -175,6 +175,325 @@ class UsgsEarthquakeProvider(SourceProvider):
 
 
 # ----------------------------------------------------------------------
+# NASA EONET natural events
+# ----------------------------------------------------------------------
+# EONET v3 category id -> (taxonomy category, subcategory). The raw EONET
+# category is always kept in attributes for auditability.
+EONET_CATEGORY_MAP = {
+    "earthquakes": ("natural_disaster", "earthquake"),
+    "floods": ("natural_disaster", "flood"),
+    "volcanoes": ("natural_disaster", "volcanic_activity"),
+    "wildfires": ("natural_disaster", "wildfire"),
+    "landslides": ("natural_disaster", "landslide"),
+    "drought": ("natural_disaster", "drought"),
+    "severeStorms": ("severe_weather", "severe_storm"),
+    "tempExtremes": ("severe_weather", "extreme_heat"),
+    "snow": ("severe_weather", "extreme_cold"),
+    "dustHaze": ("environmental", "pollution_incident"),
+    "seaLakeIce": ("environmental", "ecological_damage"),
+    "waterColor": ("environmental", "ecological_damage"),
+    "manmade": ("other", "unclassified"),
+}
+
+
+def _parse_eonet_payload(payload: dict, max_events: int) -> list[dict]:
+    """Flatten an EONET v3 /events payload into raw records.
+
+    Each event's position is its *most recent Point geometry* exactly as
+    reported - coordinates are never derived. Events whose geometries are
+    polygons only keep no coordinates; the normaliser may still place them
+    at country level from their title text.
+    """
+    records = []
+    for event in (payload.get("events") or [])[: max(1, max_events)]:
+        points = [
+            geometry
+            for geometry in (event.get("geometry") or [])
+            if (geometry or {}).get("type") == "Point"
+            and len(geometry.get("coordinates") or []) >= 2
+        ]
+        latest = None
+        if points:
+            latest = max(points, key=lambda g: g.get("date") or "")
+        categories = event.get("categories") or []
+        category_id = (categories[0] or {}).get("id") if categories else None
+        lon = latest["coordinates"][0] if latest else None
+        lat = latest["coordinates"][1] if latest else None
+        records.append(
+            {
+                "record_id": event.get("id"),
+                "title": event.get("title"),
+                "description": event.get("description"),
+                "link": event.get("link"),
+                "closed": event.get("closed"),
+                "category_id": category_id,
+                "geometry_date": latest.get("date") if latest else None,
+                "magnitude_value": latest.get("magnitudeValue") if latest else None,
+                "magnitude_unit": latest.get("magnitudeUnit") if latest else None,
+                "latitude": float(lat) if lat is not None else None,
+                "longitude": float(lon) if lon is not None else None,
+                "sources": [
+                    source.get("id") for source in (event.get("sources") or []) if source.get("id")
+                ],
+            }
+        )
+    return records
+
+
+class EonetProvider(SourceProvider):
+    """NASA EONET natural-event catalogue (public API, no key required).
+
+    Implemented against the published v3 API shape and unit-tested with
+    fixture payloads; live operation has not been exercised from the
+    development sandbox, so the provider reports ``unverified`` until a
+    real collection succeeds - the Providers page shows this honestly.
+    """
+
+    key = "eonet"
+    name = "NASA EONET natural events"
+    provider_type = "hazard"
+    docs_url = "https://eonet.gsfc.nasa.gov/docs/v3"
+    verification_status = "unverified"
+    produces_structured_observations = True
+    default_interval_seconds = 3600
+
+    def is_enabled(self) -> bool:
+        return bool(self.config.eonet_enabled)
+
+    async def fetch_raw(self) -> list[dict]:
+        async with async_client() as client:
+            response = await client.get(
+                f"{self.config.eonet_base_url.rstrip('/')}/events",
+                params={
+                    "status": "all",
+                    "days": max(1, self.config.eonet_days),
+                    "limit": max(1, self.config.eonet_max_events),
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+        return _parse_eonet_payload(payload, self.config.eonet_max_events)
+
+    def normalise(self, record: dict) -> dict | None:
+        from ...intelligence.geolocation import extract_location
+
+        title = clean_text(record.get("title"), 400)
+        if not title or not record.get("record_id"):
+            return None
+
+        category, subcategory = EONET_CATEGORY_MAP.get(
+            record.get("category_id") or "", ("other", "unclassified")
+        )
+        latitude, longitude = record.get("latitude"), record.get("longitude")
+        has_point = latitude is not None and longitude is not None
+        # Country is taken from the event's own title text only; coordinates
+        # (when present) are EONET's, stored exactly.
+        location = extract_location(title)
+        description = clean_text(record.get("description"), 2000)
+
+        severity_hint = None
+        magnitude = record.get("magnitude_value")
+        if record.get("category_id") == "earthquakes" and magnitude is not None:
+            try:
+                severity_hint = min(10.0, max(1.0, (float(magnitude) - 2.0) * 1.45 + 2.0))
+            except (TypeError, ValueError):
+                severity_hint = None
+
+        status_note = "closed" if record.get("closed") else "ongoing"
+        return _observation(
+            provider=self.key,
+            record_id=record.get("record_id"),
+            source_url=record.get("link"),
+            observed_at=to_utc_iso(parse_timestamp(record.get("geometry_date"))),
+            event_time=to_utc_iso(parse_timestamp(record.get("geometry_date"))),
+            latitude=latitude,
+            longitude=longitude,
+            location_precision="exact" if has_point else ("country" if location.country_code else "unknown"),
+            country=location.country,
+            country_code=location.country_code,
+            location_text=location.location_text or title,
+            category=category,
+            subcategory=subcategory,
+            title=title,
+            summary=(
+                description[:800]
+                or f"NASA EONET catalogue entry ({status_note}): {title}."
+            ),
+            severity_hint=severity_hint,
+            attributes={
+                "eonet_category": record.get("category_id"),
+                "eonet_sources": record.get("sources"),
+                "eonet_status": status_note,
+                "magnitude_value": magnitude,
+                "magnitude_unit": record.get("magnitude_unit"),
+                "is_catalogue_entry": True,
+            },
+            source="NASA EONET",
+            publisher="NASA EONET",
+            published_at=to_utc_iso(parse_timestamp(record.get("geometry_date"))),
+            description=description or title,
+            language="en",
+            url=record.get("link") or f"https://eonet.gsfc.nasa.gov/api/v3/events/{record.get('record_id')}",
+            is_structured=True,
+        )
+
+
+# ----------------------------------------------------------------------
+# GDACS disaster alerts (UN / European Commission)
+# ----------------------------------------------------------------------
+GDACS_EVENT_TYPE_MAP = {
+    "EQ": ("natural_disaster", "earthquake", "Earthquake"),
+    "TC": ("natural_disaster", "tropical_cyclone", "Tropical cyclone"),
+    "FL": ("natural_disaster", "flood", "Flood"),
+    "VO": ("natural_disaster", "volcanic_activity", "Volcanic activity"),
+    "DR": ("natural_disaster", "drought", "Drought"),
+    "WF": ("natural_disaster", "wildfire", "Wildfire"),
+    "TS": ("natural_disaster", "tsunami", "Tsunami"),
+}
+
+# GDACS alert levels mapped onto the platform's 0-10 severity hint scale.
+# The original level and score are preserved in attributes/official_severity.
+GDACS_ALERT_SEVERITY_HINT = {"red": 8.5, "orange": 6.0, "green": 3.5}
+
+
+def _parse_gdacs_payload(payload, max_events: int) -> list[dict]:
+    """Flatten a GDACS geteventlist payload (GeoJSON or bare list)."""
+    if isinstance(payload, dict):
+        features = payload.get("features") or payload.get("events") or []
+    elif isinstance(payload, list):
+        features = payload
+    else:
+        features = []
+
+    records = []
+    for feature in features[: max(1, max_events)]:
+        if not isinstance(feature, dict):
+            continue
+        props = feature.get("properties") or feature
+        geometry = feature.get("geometry") or {}
+        coordinates = geometry.get("coordinates") or []
+        lon = coordinates[0] if len(coordinates) > 0 else None
+        lat = coordinates[1] if len(coordinates) > 1 else None
+        url = props.get("url") or props.get("link")
+        if isinstance(url, dict):
+            url = url.get("link") or url.get("href")
+        records.append(
+            {
+                "event_id": props.get("eventid"),
+                "episode_id": props.get("episodeid"),
+                "event_type": (props.get("eventtype") or "").upper(),
+                "name": props.get("name") or props.get("eventname") or props.get("title"),
+                "country": props.get("country"),
+                "alert_level": (props.get("alertlevel") or "").lower() or None,
+                "alert_score": props.get("alertscore"),
+                "severity_value": (props.get("severity") or {}).get("value")
+                if isinstance(props.get("severity"), dict)
+                else props.get("severity"),
+                "severity_unit": (props.get("severity") or {}).get("unit")
+                if isinstance(props.get("severity"), dict)
+                else None,
+                "from_date": props.get("fromdate"),
+                "to_date": props.get("todate"),
+                "modified_date": props.get("modifieddate"),
+                "description": props.get("htmldescription") or props.get("description"),
+                "url": url,
+                "latitude": float(lat) if lat is not None else None,
+                "longitude": float(lon) if lon is not None else None,
+            }
+        )
+    return records
+
+
+class GdacsProvider(SourceProvider):
+    """GDACS disaster alerts (public REST API, no authentication required).
+
+    Implemented against the published GDACS API shape and unit-tested with
+    fixture payloads; live operation has not been exercised from the
+    development sandbox, so the provider reports ``unverified`` until a
+    real collection succeeds.
+    """
+
+    key = "gdacs"
+    name = "GDACS disaster alerts"
+    provider_type = "hazard"
+    docs_url = "https://www.gdacs.org/gdacsapi/swagger/index.html"
+    verification_status = "unverified"
+    produces_structured_observations = True
+    default_interval_seconds = 1800
+
+    def is_enabled(self) -> bool:
+        return bool(self.config.gdacs_enabled)
+
+    async def fetch_raw(self) -> list[dict]:
+        async with async_client() as client:
+            response = await client.get(self.config.gdacs_api_url)
+            response.raise_for_status()
+            payload = response.json()
+        return _parse_gdacs_payload(payload, self.config.gdacs_max_events)
+
+    def normalise(self, record: dict) -> dict | None:
+        from ...intelligence.geolocation import extract_location
+
+        event_type = record.get("event_type") or ""
+        if record.get("event_id") is None and not record.get("name"):
+            return None
+        category, subcategory, type_label = GDACS_EVENT_TYPE_MAP.get(
+            event_type, ("natural_disaster", "unclassified", "Disaster")
+        )
+        country_name = clean_text(record.get("country"), 200)
+        location = extract_location(country_name or record.get("name") or "")
+        latitude, longitude = record.get("latitude"), record.get("longitude")
+        has_point = latitude is not None and longitude is not None
+
+        alert_level = record.get("alert_level")
+        title = clean_text(record.get("name"), 400) or (
+            f"{type_label} — {country_name}" if country_name else f"GDACS {type_label} alert"
+        )
+        description = clean_text(record.get("description"), 3000)
+        report_url = record.get("url") or (
+            "https://www.gdacs.org/report.aspx"
+            f"?eventid={record.get('event_id')}&episodeid={record.get('episode_id')}"
+        )
+
+        return _observation(
+            provider=self.key,
+            record_id=f"{event_type}-{record.get('event_id')}",
+            source_url=report_url,
+            observed_at=to_utc_iso(parse_timestamp(record.get("modified_date"))),
+            event_time=to_utc_iso(parse_timestamp(record.get("from_date"))),
+            latitude=latitude,
+            longitude=longitude,
+            location_precision="exact" if has_point else ("country" if location.country_code else "unknown"),
+            country=country_name or location.country,
+            country_code=location.country_code,
+            location_text=country_name or location.location_text,
+            category=category,
+            subcategory=subcategory,
+            title=title,
+            summary=description[:800] or f"GDACS {type_label} alert for {country_name or 'an area'} (alert level: {alert_level or 'not reported'}).",
+            severity_hint=GDACS_ALERT_SEVERITY_HINT.get(alert_level or ""),
+            official_severity=alert_level,
+            attributes={
+                "gdacs_event_type": event_type,
+                "gdacs_alert_level": alert_level,
+                "gdacs_alert_score": record.get("alert_score"),
+                "gdacs_severity_value": record.get("severity_value"),
+                "gdacs_severity_unit": record.get("severity_unit"),
+                "gdacs_episode_id": record.get("episode_id"),
+                "alert_end": record.get("to_date"),
+                "is_official_alert": True,
+            },
+            source="GDACS",
+            publisher="GDACS",
+            published_at=to_utc_iso(parse_timestamp(record.get("from_date"))),
+            description=description or title,
+            language="en",
+            url=report_url,
+            is_structured=True,
+        )
+
+
+# ----------------------------------------------------------------------
 # ReliefWeb humanitarian reports
 # ----------------------------------------------------------------------
 class ReliefWebProvider(SourceProvider):

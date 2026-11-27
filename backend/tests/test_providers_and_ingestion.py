@@ -163,6 +163,125 @@ def test_usgs_observation_normalisation():
     assert observation["severity_hint"] > 5
 
 
+def test_eonet_payload_parsing_and_normalisation():
+    from app.ingestion.providers.structured import EonetProvider, _parse_eonet_payload
+
+    records = _parse_eonet_payload(
+        {
+            "events": [
+                {
+                    "id": "EONET_9001",
+                    "title": "Wildfire near Redding, California",
+                    "description": "A wildfire reported by satellite sensors.",
+                    "link": "https://eonet.gsfc.nasa.gov/api/v3/events/EONET_9001",
+                    "closed": None,
+                    "categories": [{"id": "wildfires", "title": "Wildfires"}],
+                    "sources": [{"id": "EO", "url": "https://example.org/src"}],
+                    "geometry": [
+                        {"date": "2026-11-25T00:00:00Z", "type": "Point", "coordinates": [-122.4, 40.6]},
+                        {"date": "2026-11-27T00:00:00Z", "type": "Point", "coordinates": [-122.3, 40.7]},
+                    ],
+                }
+            ]
+        },
+        max_events=10,
+    )
+    assert len(records) == 1
+    # Most recent Point geometry wins, stored exactly as reported.
+    assert records[0]["latitude"] == 40.7 and records[0]["longitude"] == -122.3
+
+    observation = EonetProvider().normalise(records[0])
+    assert observation["category"] == "natural_disaster"
+    assert observation["subcategory"] == "wildfire"
+    assert observation["location_precision"] == "exact"
+    assert observation["attributes"]["eonet_category"] == "wildfires"
+    assert observation["provider"] == "eonet"
+
+
+def test_eonet_earthquake_magnitude_becomes_severity_hint():
+    from app.ingestion.providers.structured import EonetProvider
+
+    observation = EonetProvider().normalise(
+        {
+            "record_id": "EONET_9002",
+            "title": "Earthquake in Japan region",
+            "category_id": "earthquakes",
+            "magnitude_value": 6.0,
+            "magnitude_unit": "M",
+            "geometry_date": "2026-11-27T00:00:00Z",
+            "latitude": 36.0,
+            "longitude": 138.0,
+            "link": "https://eonet.gsfc.nasa.gov/api/v3/events/EONET_9002",
+        }
+    )
+    assert observation["subcategory"] == "earthquake"
+    assert observation["severity_hint"] > 5
+    assert observation["country_code"] == "JP"
+
+
+def test_gdacs_payload_parsing_and_normalisation():
+    from app.ingestion.providers.structured import GdacsProvider, _parse_gdacs_payload
+
+    records = _parse_gdacs_payload(
+        {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [106.8, -6.2]},
+                    "properties": {
+                        "eventid": 1234567,
+                        "episodeid": 7654321,
+                        "eventtype": "EQ",
+                        "name": "Earthquake in Indonesia",
+                        "country": "Indonesia",
+                        "alertlevel": "Red",
+                        "alertscore": 90,
+                        "severity": {"value": 6.4, "unit": "M"},
+                        "fromdate": "2026-11-27T01:00:00",
+                        "todate": "2026-11-29T01:00:00",
+                        "url": "https://www.gdacs.org/report.aspx?eventid=1234567",
+                    },
+                }
+            ],
+        },
+        max_events=10,
+    )
+    assert len(records) == 1
+    assert records[0]["latitude"] == -6.2 and records[0]["longitude"] == 106.8
+
+    observation = GdacsProvider().normalise(records[0])
+    assert observation["category"] == "natural_disaster"
+    assert observation["subcategory"] == "earthquake"
+    assert observation["location_precision"] == "exact"
+    assert observation["country_code"] == "ID"
+    # GDACS alert level is preserved as the official severity; the numeric
+    # hint is a derived mapping, disclosed in attributes.
+    assert observation["official_severity"] == "red"
+    assert observation["severity_hint"] == 8.5
+    assert observation["attributes"]["gdacs_alert_score"] == 90
+    assert observation["attributes"]["is_official_alert"] is True
+
+
+def test_new_free_providers_registered_enabled_and_scheduled():
+    from app.ingestion.registry import PROVIDERS, provider_interval_seconds
+    from app.scheduler.runner import schedule_state
+
+    for key in ("eonet", "gdacs"):
+        provider = PROVIDERS[key]
+        # Both APIs are public and keyless: no credentials may be required.
+        assert provider.requires_credentials is False
+        assert provider.is_enabled() is True
+        assert provider.validate_config() == (True, None)
+        assert provider.produces_structured_observations is True
+        # Live operation has not been exercised yet; it must not be claimed.
+        assert provider.verification_status == "unverified"
+    assert provider_interval_seconds("eonet") == 3600
+    assert provider_interval_seconds("gdacs") == 1800
+    jobs = {job["provider"] for job in schedule_state()["jobs"]}
+    assert {"eonet", "gdacs"} <= jobs
+
+
 def test_firms_detection_is_labelled_as_detection_not_incident():
     from app.config import Settings
     from app.ingestion.providers.structured import FirmsWildfireProvider
