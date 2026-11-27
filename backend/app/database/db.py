@@ -1,56 +1,72 @@
-import os
+"""SQLite connection lifecycle, migration bootstrap and retention.
+
+The connection path is derived from ``Settings.database_url`` so the documented
+configuration is the only source of truth.
+"""
+
+from __future__ import annotations
+
+import logging
+import shutil
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
 from ..config import settings
 
-BASE_DIR = Path(__file__).resolve().parents[2]
-DATA_DIR = BASE_DIR / "data"
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-DB_PATH = DATA_DIR / "events.db"
+logger = logging.getLogger(__name__)
 
-# Phase 3 indexing writes to the same SQLite file while the map/dashboard reads
-# it. In the default rollback-journal mode a writer blocks every reader (and the
-# other way round), which showed up as the whole app hanging during indexing.
-# WAL lets readers and one writer work concurrently, and the busy timeout makes
-# a contended write wait instead of failing immediately.
-BUSY_TIMEOUT_MS = 30000
+# ``DB_PATH`` is the configured database file. ``get_connection`` resolves its
+# path at call time (rather than binding it at import) so tests can point a
+# module-level ``DB_PATH`` at a temporary file and all layers follow.
+DB_PATH = settings.ensure_data_dir()
+BUSY_TIMEOUT_MS = settings.db_busy_timeout_ms
 
 
-def get_connection():
-    conn = sqlite3.connect(DB_PATH, timeout=BUSY_TIMEOUT_MS / 1000)
+def current_db_path() -> Path:
+    """Resolve the active database path.
+
+    Module attribute first (patched by tests), otherwise the configured
+    ``DATABASE_URL``. This keeps a single source of truth while remaining
+    testable.
+    """
+    candidate = globals().get("DB_PATH")
+    if candidate:
+        return Path(candidate)
+    return settings.db_path
+
+
+def get_connection(db_path: Path | None = None) -> sqlite3.Connection:
+    """Return a configured connection (row factory, busy timeout, WAL)."""
+    path = Path(db_path) if db_path else current_db_path()
+    conn = sqlite3.connect(path, timeout=BUSY_TIMEOUT_MS / 1000)
     conn.row_factory = sqlite3.Row
     conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
-    try:
-        conn.execute("PRAGMA journal_mode = WAL")
-        conn.execute("PRAGMA synchronous = NORMAL")
-    except sqlite3.Error:
-        # A database on a filesystem without WAL support still works.
-        pass
+    # Foreign keys are off by default in SQLite and must be enabled per
+    # connection.
+    conn.execute("PRAGMA foreign_keys = ON")
+    if settings.db_wal_enabled:
+        try:
+            conn.execute("PRAGMA journal_mode = WAL")
+            conn.execute("PRAGMA synchronous = NORMAL")
+        except sqlite3.Error:
+            # A database on a filesystem without WAL support still works.
+            logger.warning("WAL mode unavailable for %s; continuing", path)
     return conn
 
 
 @contextmanager
-def write_connection():
-    """Yield a connection that holds the write lock for the whole block.
+def write_connection(db_path: Path | None = None):
+    """Yield a connection holding the write lock for the whole block.
 
-    ``sqlite3`` opens transactions in *deferred* mode: a transaction starts on
-    the first statement and only takes a lock when it first writes. A reader
-    therefore starts as a reader and later tries to *upgrade* to a writer.
-    SQLite cannot always grant that upgrade - it returns ``SQLITE_BUSY``
-    ("database is locked") immediately, and ``busy_timeout`` deliberately does
-    **not** apply to it, because waiting could deadlock.
-
-    Ingestion is the case that hits this: it reads the existing articles and
-    events, then inserts, while the RAG indexer and the retention purge are
-    writing in parallel. Acquiring the write lock up front with
-    ``BEGIN IMMEDIATE`` makes the busy timeout apply, so the writer waits for
-    the lock instead of crashing the request.
+    ``sqlite3`` opens transactions in *deferred* mode, so a read-then-write
+    transaction has to upgrade its lock and can fail with ``SQLITE_BUSY``
+    immediately (the busy timeout does not apply to upgrades). Ingestion reads
+    existing articles and then inserts, so the lock is taken up front with
+    ``BEGIN IMMEDIATE`` and the busy timeout then applies.
     """
-    conn = get_connection()
-    # Take manual control of transactions so BEGIN IMMEDIATE is not fought over
-    # by the driver's implicit transaction handling.
+    conn = get_connection(db_path)
     conn.isolation_level = None
     try:
         conn.execute("BEGIN IMMEDIATE")
@@ -66,17 +82,53 @@ def write_connection():
         conn.close()
 
 
-HISTORICAL_RETENTION_DAYS = max(30, settings.historical_retention_days)
-
-
-def purge_expired_events() -> int:
-    # Use the same write-lock strategy as ingestion so retention cleanup waits
-    # for another writer instead of failing with SQLITE_BUSY.
-    conn = get_connection()
-    conn.isolation_level = None
-
+@contextmanager
+def read_connection(db_path: Path | None = None):
+    conn = get_connection(db_path)
     try:
-        conn.execute("BEGIN IMMEDIATE")
+        yield conn
+    finally:
+        conn.close()
+
+
+def backup_database(reason: str = "manual") -> dict:
+    """Copy the database file next to itself with a timestamped name.
+
+    Called before destructive migrations. SQLite's own backup API is used so a
+    consistent snapshot is taken even with WAL files present.
+    """
+    source = current_db_path()
+    if not source.exists():
+        return {"created": False, "reason": "database does not exist yet"}
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    target = source.with_name(f"{source.stem}.{stamp}.{reason}.bak")
+    try:
+        src = sqlite3.connect(source)
+        dst = sqlite3.connect(target)
+        try:
+            src.backup(dst)
+        finally:
+            dst.close()
+            src.close()
+    except sqlite3.Error:
+        shutil.copy2(source, target)
+    return {"created": True, "path": str(target)}
+
+
+HISTORICAL_RETENTION_DAYS = max(1, settings.historical_retention_days)
+
+
+def purge_expired_events(retention_days: int | None = None) -> int:
+    """Delete events older than the retention window plus their dependants.
+
+    Returns the number of deleted events. Child tables that reference
+    ``events(id)`` with ``ON DELETE CASCADE`` are cleaned by SQLite, but the
+    explicit deletes are kept for databases migrated from older schemas where
+    the cascade was not declared.
+    """
+    days = max(1, retention_days or HISTORICAL_RETENTION_DAYS)
+    with write_connection() as conn:
         expired_ids = [
             row["id"]
             for row in conn.execute(
@@ -93,7 +145,7 @@ def purge_expired_events() -> int:
                     END
                 ) < julianday('now', '-' || ? || ' days')
                 """,
-                (HISTORICAL_RETENTION_DAYS,),
+                (days,),
             ).fetchall()
         ]
 
@@ -101,144 +153,66 @@ def purge_expired_events() -> int:
             return 0
 
         placeholders = ",".join("?" for _ in expired_ids)
-        for table in ("event_articles", "event_likes", "event_comments", "event_claims"):
-            conn.execute(
-                f"DELETE FROM {table} WHERE event_id IN ({placeholders})",
-                expired_ids,
-            )
-
-        conn.execute(
-            f"DELETE FROM events WHERE id IN ({placeholders})",
-            expired_ids,
+        # Tables keyed by event_id, plus relationship/graph tables whose event
+        # column is named differently. Only tables that actually carry the
+        # column are touched, so the purge keeps working as the schema grows.
+        child_tables = (
+            "event_articles",
+            "event_likes",
+            "event_comments",
+            "event_claims",
+            "event_locations",
+            "event_timeline",
+            "event_entity_mentions",
+            "alerts",
         )
-        conn.execute("COMMIT")
+        for table in child_tables:
+            if _table_exists(conn, table) and _column_exists(conn, table, "event_id"):
+                conn.execute(
+                    f"DELETE FROM {table} WHERE event_id IN ({placeholders})",
+                    expired_ids,
+                )
+        for table, column in (
+            ("event_relationships", "source_event_id"),
+            ("event_relationships", "target_event_id"),
+        ):
+            if _table_exists(conn, table) and _column_exists(conn, table, column):
+                conn.execute(
+                    f"DELETE FROM {table} WHERE {column} IN ({placeholders})",
+                    expired_ids,
+                )
+
+        conn.execute(f"DELETE FROM events WHERE id IN ({placeholders})", expired_ids)
+
+        # Prune orphan articles (no event links) older than the article window.
+        conn.execute(
+            """
+            DELETE FROM articles
+            WHERE NOT EXISTS (
+                SELECT 1 FROM event_articles ea WHERE ea.article_id = articles.id
+            )
+              AND julianday(COALESCE(published_at, first_seen_at, CURRENT_TIMESTAMP))
+                  < julianday('now', '-' || ? || ' days')
+            """,
+            (max(1, settings.retention_article_days),),
+        )
         return len(expired_ids)
-    except Exception:
-        try:
-            conn.execute("ROLLBACK")
-        except sqlite3.Error:
-            pass
-        raise
-    finally:
-        conn.close()
 
 
-def init_db():
-    conn = get_connection()
-    conn.executescript("""
-    CREATE TABLE IF NOT EXISTS articles (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT NOT NULL,
-        url TEXT UNIQUE NOT NULL,
-        source TEXT,
-        published_at TEXT,
-        description TEXT,
-        image_url TEXT,
-        content_hash TEXT
-    );
+def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    return any(row[1] == column for row in conn.execute(f"PRAGMA table_info({table})"))
 
-    CREATE TABLE IF NOT EXISTS events (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT NOT NULL,
-        summary TEXT,
-        category TEXT NOT NULL,
-        country TEXT,
-        country_code TEXT,
-        latitude REAL,
-        longitude REAL,
-        importance INTEGER DEFAULT 5,
-        confidence REAL DEFAULT 0.5,
-        article_count INTEGER DEFAULT 1,
-        source_count INTEGER DEFAULT 1,
-        unique_source_count INTEGER DEFAULT 1,
-        corroboration_level TEXT DEFAULT 'single',
-        first_seen_at TEXT,
-        last_seen_at TEXT,
-        source_domains TEXT,
-        event_time TEXT,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
 
-    CREATE TABLE IF NOT EXISTS event_articles (
-        event_id INTEGER NOT NULL,
-        article_id INTEGER NOT NULL,
-        PRIMARY KEY(event_id, article_id)
-    );
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type IN ('table','view') AND name = ?",
+        (table,),
+    ).fetchone()
+    return row is not None
 
-    CREATE TABLE IF NOT EXISTS event_likes (
-        event_id INTEGER NOT NULL,
-        user_id TEXT NOT NULL,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY(event_id, user_id)
-    );
 
-    CREATE TABLE IF NOT EXISTS event_comments (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        event_id INTEGER NOT NULL,
-        user_id TEXT NOT NULL,
-        author TEXT,
-        body TEXT NOT NULL,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
+def init_db() -> dict:
+    """Create/upgrade the schema through the versioned migration runner."""
+    from .migrations import run_migrations
 
-    CREATE TABLE IF NOT EXISTS users (
-        id TEXT PRIMARY KEY,
-        email TEXT NOT NULL UNIQUE COLLATE NOCASE,
-        display_name TEXT NOT NULL,
-        password_hash TEXT NOT NULL,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS auth_sessions (
-        token_hash TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        expires_at TEXT NOT NULL,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_auth_sessions_user
-        ON auth_sessions(user_id);
-
-    CREATE INDEX IF NOT EXISTS idx_event_comments_event
-        ON event_comments(event_id);
-
-    CREATE INDEX IF NOT EXISTS idx_event_likes_event
-        ON event_likes(event_id);
-
-    -- Phase 1/2 read paths: latest events, per-country feeds and the assistant's
-    -- filtered retrieval all sort/filter on these columns.
-    CREATE INDEX IF NOT EXISTS idx_events_event_time
-        ON events(event_time DESC);
-
-    CREATE INDEX IF NOT EXISTS idx_events_country_time
-        ON events(country_code, event_time DESC);
-
-    CREATE INDEX IF NOT EXISTS idx_events_category_time
-        ON events(category, event_time DESC);
-
-    CREATE INDEX IF NOT EXISTS idx_event_articles_article
-        ON event_articles(article_id);
-    """)
-
-    article_columns = {
-        row[1]
-        for row in conn.execute("PRAGMA table_info(articles)").fetchall()
-    }
-    if "image_url" not in article_columns:
-        conn.execute("ALTER TABLE articles ADD COLUMN image_url TEXT")
-
-    event_columns = {row[1] for row in conn.execute("PRAGMA table_info(events)").fetchall()}
-    for column_name, column_sql in {
-        "article_count": "INTEGER DEFAULT 1",
-        "source_count": "INTEGER DEFAULT 1",
-        "unique_source_count": "INTEGER DEFAULT 1",
-        "corroboration_level": "TEXT DEFAULT 'single'",
-        "first_seen_at": "TEXT",
-        "last_seen_at": "TEXT",
-        "source_domains": "TEXT",
-    }.items():
-        if column_name not in event_columns:
-            conn.execute(f"ALTER TABLE events ADD COLUMN {column_name} {column_sql}")
-
-    conn.commit()
-    conn.close()
+    return run_migrations()

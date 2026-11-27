@@ -1,44 +1,43 @@
+"""FastAPI application entry point."""
+
+from __future__ import annotations
+
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from .api.routes import router
 from .config import settings
 from .database.db import init_db, purge_expired_events
-from .api.routes import router
+from .logging_config import configure_logging
 from .weather.routes import router as weather_router
 
-
 logger = logging.getLogger(__name__)
-RETENTION_INTERVAL_SECONDS = 60
-# Safety bound for the startup indexing loop (each round stops early once a
-# round indexes nothing new).
-RAG_STARTUP_INDEX_MAX_ROUNDS = 20
-retention_task: asyncio.Task | None = None
-rag_index_task: asyncio.Task | None = None
 
-app = FastAPI(
-    title=settings.app_name,
-    version="0.1.0"
-)
+RAG_STARTUP_INDEX_MAX_ROUNDS = 20
+
+app_state: dict = {
+    "started_at": None,
+    "retention_task": None,
+    "rag_index_task": None,
+    "scheduler_task": None,
+    "migrations": {},
+    "ready": False,
+}
 
 
 class ErrorResponseMiddleware:
     """Return a JSON 500 for unhandled errors *without* losing CORS headers.
 
     Starlette renders unhandled exceptions in ``ServerErrorMiddleware``, which
-    sits **outside** every user middleware - including ``CORSMiddleware``. A
-    handler registered with ``@app.exception_handler(Exception)`` therefore
-    produces a 500 that never passes through CORS, and the browser reports it
-    as ``No 'Access-Control-Allow-Origin' header is present`` even though CORS
-    is configured correctly.
-
-    Wrapping the exception in an ASGI middleware keeps the response *inside* the
-    CORS layer, so failures reach the browser as readable JSON. The real
-    traceback is still logged server side and never sent to the client.
+    sits outside ``CORSMiddleware``, so the browser reports a CORS failure
+    instead of a server error. Wrapping the exception here keeps the response
+    inside the CORS layer. Tracebacks stay in the logs.
     """
 
     def __init__(self, app: ASGIApp) -> None:
@@ -60,11 +59,8 @@ class ErrorResponseMiddleware:
         try:
             await self.app(scope, receive, send_wrapper)
         except Exception:
-            # Once the response has started we can no longer change the status
-            # code, so let the error propagate to the server.
             if response_started:
                 raise
-
             logger.exception(
                 "Unhandled error while handling %s %s",
                 scope.get("method", "?"),
@@ -77,127 +73,138 @@ class ErrorResponseMiddleware:
             await response(scope, receive, send)
 
 
-# Register the error middleware FIRST and CORS SECOND. Starlette applies user
-# middleware in reverse registration order, so CORSMiddleware ends up on the
-# outside and adds its headers to the 500 responses produced above.
-app.add_middleware(ErrorResponseMiddleware)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-async def _purge_expired_events_periodically():
+async def _purge_expired_events_periodically() -> None:
     while True:
-        await asyncio.sleep(RETENTION_INTERVAL_SECONDS)
+        await asyncio.sleep(max(60, settings.retention_purge_interval_seconds))
         try:
-            purge_expired_events()
+            await asyncio.to_thread(purge_expired_events)
         except Exception:
             logger.exception("Failed to purge expired events")
 
 
-async def _index_rag_on_startup():
-    """Build/refresh the Phase 3 search index shortly after startup.
-
-    Runs in bounded batches, pausing between them and yielding to the event loop,
-    so the backend stays responsive while the index is built: a full rebuild used
-    to embed hundreds of documents back to back and made every request feel slow.
-    Failures are logged only - the platform must boot and serve Phases 1/2 even
-    when Ollama or Qdrant are offline.
-    """
+async def _index_rag_on_startup() -> None:
+    """Build the assistant's search index in bounded batches after startup."""
     if not settings.rag_index_on_startup:
         return
-
     try:
         await asyncio.sleep(max(0.0, settings.rag_index_startup_delay_seconds))
         from .rag.indexer import _INDEX_LOCK, index_pending
 
         totals = {"indexed": 0, "skipped": 0, "failed": 0}
-        status = "ok"
         for round_number in range(1, RAG_STARTUP_INDEX_MAX_ROUNDS + 1):
             if _INDEX_LOCK.locked():
-                logger.info(
-                    "[RAG] Startup indexing: another run is active, standing down"
-                )
                 break
-
             async with _INDEX_LOCK:
                 result = await index_pending(
-                    limit=settings.rag_index_batch_limit,
-                    config=settings,
+                    limit=settings.rag_index_batch_limit, config=settings
                 )
-
-            status = result.status
             for key in totals:
                 totals[key] += getattr(result, key, 0)
-
             logger.info(
-                "[RAG] Startup indexing round %s: %s (indexed=%s skipped=%s failed=%s)",
-                round_number,
-                result.status,
-                result.indexed,
-                result.skipped,
-                result.failed,
+                "[RAG] Startup round %s: %s (indexed=%s skipped=%s failed=%s)",
+                round_number, result.status, result.indexed, result.skipped, result.failed,
             )
-
-            if result.status in {"unavailable", "disabled"}:
+            if result.status in {"unavailable", "disabled"} or result.indexed == 0:
                 break
-            if result.indexed == 0:
-                break  # nothing left that this run can improve on
-
-            # Give the event loop (and any user request) room to breathe.
             await asyncio.sleep(max(0.0, settings.rag_index_startup_pause_seconds))
-
-        logger.info(
-            "[RAG] Startup indexing finished: %s (indexed=%s skipped=%s failed=%s)",
-            status,
-            totals["indexed"],
-            totals["skipped"],
-            totals["failed"],
-        )
     except asyncio.CancelledError:
         raise
     except Exception:
         logger.exception("[RAG] Startup indexing failed")
 
 
-@app.on_event("startup")
-async def startup():
-    global retention_task, rag_index_task
-    init_db()
-    purge_expired_events()
-    retention_task = asyncio.create_task(_purge_expired_events_periodically())
-    rag_index_task = asyncio.create_task(_index_rag_on_startup())
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    configure_logging(settings.log_level, settings.log_json)
+    logger.info(
+        "Starting %s v%s (environment=%s, db=%s)",
+        settings.app_name, settings.app_version, settings.environment, settings.db_path,
+    )
+
+    migration_summary = await asyncio.to_thread(init_db)
+    app_state["migrations"] = migration_summary
+    if migration_summary.get("applied"):
+        logger.info("Applied database migrations: %s", migration_summary["applied"])
+    if migration_summary.get("backup"):
+        logger.info("Pre-migration database backup: %s", migration_summary["backup"])
+
+    try:
+        from .ingestion.registry import ensure_provider_rows
+
+        ensure_provider_rows()
+    except Exception:
+        logger.exception("Could not initialise provider registry rows")
+
+    await asyncio.to_thread(purge_expired_events)
+
+    app_state["started_at"] = asyncio.get_event_loop().time()
+    app_state["ready"] = True
+    app_state["retention_task"] = asyncio.create_task(_purge_expired_events_periodically())
+    app_state["rag_index_task"] = asyncio.create_task(_index_rag_on_startup())
+
+    if settings.scheduler_enabled:
+        from .scheduler.runner import scheduler_loop
+
+        app_state["scheduler_task"] = asyncio.create_task(scheduler_loop())
+        logger.info("Background provider scheduler enabled")
+
+    try:
+        yield
+    finally:
+        app_state["ready"] = False
+        for key in ("scheduler_task", "retention_task", "rag_index_task"):
+            task = app_state.get(key)
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                    pass
+        logger.info("Shutdown complete")
 
 
-@app.on_event("shutdown")
-async def shutdown():
-    for task in (retention_task, rag_index_task):
-        if task:
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
+app = FastAPI(
+    title=settings.app_name,
+    version=settings.app_version,
+    description=(
+        "Global Event Intelligence Platform API. Multi-source collection, "
+        "event correlation, explainable assessments and evidence-grounded AI."
+    ),
+    lifespan=lifespan,
+    docs_url="/docs",
+    openapi_url="/openapi.json",
+)
+
+# Registered first so CORS ends up outermost and decorates error responses.
+app.add_middleware(ErrorResponseMiddleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origin_list,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+)
 
 
-# Existing API routes
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    return response
+
+
 app.include_router(router)
-
-# Weather API routes
 app.include_router(weather_router)
 
 
-@app.get("/")
+@app.get("/", tags=["meta"])
 def root():
     return {
         "message": "Global Event Intelligence API",
-        "docs": "/docs"
+        "version": settings.app_version,
+        "environment": settings.environment,
+        "docs": "/docs",
+        "health": "/api/health",
     }

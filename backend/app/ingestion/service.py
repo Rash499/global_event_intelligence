@@ -1,432 +1,738 @@
+"""Ingestion orchestration.
+
+Responsibilities, in order:
+
+1. run the requested providers (each isolated, retried, health-recorded);
+2. normalise and validate every record;
+3. deduplicate articles against what is already stored;
+4. classify, geolocate and assess articles;
+5. cluster articles into events, or upsert structured observations;
+6. recompute event statistics, assessments, timeline and relationships;
+7. evaluate alert rules and schedule RAG indexing.
+
+Provider isolation is enforced by ``asyncio.gather(..., return_exceptions=True)``
+per provider *and* by the adapter's own error handling: one failing source can
+never prevent the others from collecting.
+"""
+
+from __future__ import annotations
+
 import asyncio
+import json
 import logging
 from datetime import datetime, timezone
 
-from .gdelt import fetch_gdelt
-from .google_news import fetch_google_news
-from .rss import fetch_rss
-
-from ..ai.ollama import analyze_with_ollama
 from ..config import settings
-from ..database.db import write_connection
-from ..intelligence.classification import classify_article, normalize_category
-from ..intelligence.clustering import find_matching_event
-from ..intelligence.confidence import score_event_confidence
-from ..intelligence.deduplication import create_article_hash, find_duplicate_article
-from ..intelligence.importance import score_event_importance
-from ..intelligence.verification import determine_corroboration_level
-from ..processing.analyzer import analyze
+from ..database.db import get_connection, write_connection
+from ..intelligence.assessment import build_event_assessment, record_timeline_entry
+from ..intelligence.classification import classify_article
+from ..intelligence.clustering import (
+    SAME_EVENT,
+    compare_events,
+    derive_event_state,
+    find_related_events,
+)
+from ..intelligence.deduplication import (
+    assess_independence,
+    compare_articles,
+)
+from ..intelligence.geolocation import extract_location
+from ..intelligence.taxonomy import TAXONOMY_VERSION
+from .normalize import normalize_article, to_utc_iso, utc_now
+from .registry import PROVIDERS, record_run
+
+logger = logging.getLogger(__name__)
 
 _background_tasks: set[asyncio.Task] = set()
 
+# Providers run on every manual/bulk collection cycle. Structured providers are
+# cheaper and more valuable, so they are included by default too.
+DEFAULT_CYCLE_PROVIDERS = ("rss", "gdelt", "google_news", "usgs", "who")
 
-def _schedule_rag_indexing():
-    """Kick off Phase 3 indexing in the background after ingestion."""
+
+def _schedule_rag_indexing() -> None:
     if not settings.rag_enabled:
         return
     try:
         from ..rag.indexer import index_after_ingestion
+
         task = asyncio.create_task(index_after_ingestion())
         _background_tasks.add(task)
         task.add_done_callback(_background_tasks.discard)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.warning("[RAG] Could not schedule post-ingestion indexing: %s", exc)
 
 
-logger = logging.getLogger(__name__)
+# ----------------------------------------------------------------------
+# Article storage
+# ----------------------------------------------------------------------
+def _load_existing_articles(conn) -> list[dict]:
+    return [
+        dict(row)
+        for row in conn.execute(
+            """
+            SELECT id, title, url, canonical_url, source, publisher, publisher_domain,
+                   provider, provider_record_id, published_at, description,
+                   content_hash, image_url, first_seen_at, language, reporting_type
+            FROM articles
+            ORDER BY id DESC
+            LIMIT 5000
+            """
+        ).fetchall()
+    ]
 
 
-def _event_time_from_article(article):
-    value = article.get("published_at") or article.get("event_time")
-    return value or datetime.now(timezone.utc).isoformat()
+def store_article(conn, article: dict, existing: list[dict]) -> tuple[int | None, dict]:
+    """Insert or refresh an article. Returns ``(article_id, verdict)``."""
+    for candidate in existing:
+        verdict = compare_articles(article, candidate)
+        if verdict.is_duplicate:
+            conn.execute(
+                """
+                UPDATE articles
+                SET last_seen_at = ?,
+                    provider = COALESCE(provider, ?)
+                WHERE id = ?
+                """,
+                (to_utc_iso(utc_now()), article.get("provider"), candidate["id"]),
+            )
+            return None, {"duplicate": True, "kind": verdict.kind, "of": candidate["id"]}
+
+    article_id = conn.execute(
+        """
+        INSERT INTO articles (
+            title, url, canonical_url, source, publisher, publisher_domain, provider,
+            provider_record_id, published_at, source_record_at, description, image_url,
+            content_hash, description_hash, language, author, extraction_status,
+            reporting_type, syndication_of, event_time, event_time_precision,
+            first_seen_at, last_seen_at, is_independent, raw_metadata
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            article["title"],
+            article["url"],
+            article.get("canonical_url"),
+            article.get("source"),
+            article.get("publisher"),
+            article.get("publisher_domain"),
+            article.get("provider"),
+            article.get("provider_record_id"),
+            article.get("published_at"),
+            article.get("source_record_at"),
+            article.get("description"),
+            article.get("image_url"),
+            article.get("content_hash"),
+            article.get("description_hash"),
+            article.get("language"),
+            article.get("author"),
+            article.get("extraction_status"),
+            article.get("reporting_type"),
+            article.get("syndication_of"),
+            article.get("event_time"),
+            article.get("event_time_precision"),
+            article.get("first_seen_at"),
+            article.get("last_seen_at"),
+            article.get("is_independent", 1),
+            json.dumps(article.get("raw_metadata"), default=str)
+            if article.get("raw_metadata")
+            else None,
+        ),
+    ).lastrowid
+    existing.append({**article, "id": article_id})
+    return article_id, {"duplicate": False}
 
 
-def _normalize_event_record(article, analysis):
-    category = normalize_category(
-        (article.get("category") or analysis.get("category") or "other")
+# ----------------------------------------------------------------------
+# Event classification of an article
+# ----------------------------------------------------------------------
+def _ai_classification_allowed() -> bool:
+    return bool(settings.ollama_enabled and settings.ai_classification_enabled)
+
+
+async def classify_for_ingestion(article: dict, ai_budget: dict) -> dict:
+    """Deterministic classification, optionally refined by the model."""
+    deterministic = classify_article(article)
+
+    if (
+        not _ai_classification_allowed()
+        or ai_budget["remaining"] <= 0
+        or deterministic["confidence"] >= settings.ai_classification_min_confidence
+    ):
+        return deterministic
+
+    try:
+        from ..ai.ollama import analyze_with_ollama
+        from ..intelligence.classification import merge_ai_classification
+
+        ai_budget["remaining"] -= 1
+        response = await analyze_with_ollama(
+            title=article.get("title", ""),
+            description=article.get("description", ""),
+            source=article.get("source", ""),
+            url=article.get("url", ""),
+        )
+        if not response:
+            return deterministic
+        return merge_ai_classification(
+            deterministic,
+            ai_response_category := response.get("category"),
+            response.get("confidence"),
+            response.get("subcategory"),
+        ) if ai_response_category is not None else deterministic
+    except Exception as exc:  # noqa: BLE001 - AI is optional
+        logger.warning("[AI] classification failed for %s: %s", article.get("url"), exc)
+        return deterministic
+
+
+# ----------------------------------------------------------------------
+# Event upsert
+# ----------------------------------------------------------------------
+def _event_payload(article: dict, classification: dict) -> dict:
+    text = f"{article.get('title', '')}. {article.get('description', '')}"
+    location = extract_location(
+        text,
+        fallback_country=article.get("country"),
+        fallback_country_code=article.get("country_code"),
     )
-    title = (article.get("title") or analysis.get("title") or "Untitled").strip()
-    summary = (
-        article.get("summary")
-        or analysis.get("summary")
-        or article.get("description")
-        or title
-    ).strip()
-    country = article.get("country") or analysis.get("country")
-    country_code = article.get("country_code") or analysis.get("country_code")
-    latitude = (
-        article.get("latitude")
-        if article.get("latitude") is not None
-        else analysis.get("latitude")
-    )
-    longitude = (
-        article.get("longitude")
-        if article.get("longitude") is not None
-        else analysis.get("longitude")
-    )
-    importance_base = int(analysis.get("importance") or 5)
-    importance = score_event_importance(
-        {
-            "severity": importance_base,
-            "geographic_impact": 6 if country else 3,
-            "source_coverage": 3,
-            "human_impact": 5 if "alert" in title.lower() or "dead" in title.lower() else 4,
-            "economic_impact": 4,
-            "urgency": 6,
-        }
-    )
-    confidence_base = float(analysis.get("confidence") or 0.5)
     return {
-        "title": title,
-        "summary": summary,
-        "category": category,
-        "country": country,
-        "country_code": country_code,
-        "latitude": latitude,
-        "longitude": longitude,
-        "importance": importance,
-        "confidence": max(0.0, min(1.0, confidence_base)),
-        "event_time": _event_time_from_article(article),
+        "title": article.get("title") or "Untitled",
+        "summary": (article.get("description") or article.get("title") or "")[:1200],
+        "category": classification["category"],
+        "subcategory": classification.get("subcategory") or "unclassified",
+        "classification_confidence": classification.get("confidence"),
+        "classification_method": classification.get("method", "deterministic"),
+        "country": location.country,
+        "country_code": location.country_code,
+        "latitude": location.latitude,
+        "longitude": location.longitude,
+        "location_precision": location.precision,
+        "location_text": location.location_text,
+        "geocoding_source": location.source,
+        "geocoding_confidence": location.confidence,
+        "occurred_at": article.get("event_time") or article.get("published_at"),
+        "occurred_at_precision": article.get("event_time_precision") or (
+            "timestamp" if article.get("published_at") else "unknown"
+        ),
+        "provider_key": article.get("provider"),
     }
 
 
-def _update_event_statistics(conn, event_id):
-    rows = conn.execute(
-        """
-        SELECT a.source, a.url, a.published_at
-        FROM event_articles ea
-        JOIN articles a ON a.id = ea.article_id
-        WHERE ea.event_id = ?
-        ORDER BY a.published_at DESC, a.id DESC
-        """,
-        (event_id,),
-    ).fetchall()
-    if not rows:
-        return
+def _recompute_event_statistics(conn, event_id: int) -> dict:
+    """Recompute everything derived from the event's articles."""
+    articles = [
+        dict(row)
+        for row in conn.execute(
+            """
+            SELECT a.id, a.title, a.url, a.description, a.source, a.publisher,
+                   a.publisher_domain, a.published_at, a.first_seen_at,
+                   a.reporting_type, a.content_hash, a.is_independent, a.provider
+            FROM articles a
+            JOIN event_articles ea ON ea.article_id = a.id
+            WHERE ea.event_id = ?
+            ORDER BY COALESCE(a.published_at, a.first_seen_at), a.id
+            """,
+            (event_id,),
+        ).fetchall()
+    ]
+    event = conn.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
+    if not event:
+        return {}
+    # Structured observations (USGS record, CAP alert) legitimately have no news
+    # article attached; their assessment must still be computed.
+    if not articles and not event["is_structured_observation"]:
+        return {}
 
-    unique_sources = sorted({(row["source"] or "Unknown").strip() for row in rows if row["source"]})
-    domains = sorted({
-        (row["url"] or "").split("//")[-1].split("/")[0].replace("www.", "")
-        for row in rows if row["url"]
-    })
-    article_count = len(rows)
-    source_count = max(1, len(unique_sources))
-    unique_source_count = max(1, len(domains))
-    first_seen_at = min((row["published_at"] for row in rows if row["published_at"]), default=None)
-    last_seen_at = max((row["published_at"] for row in rows if row["published_at"]), default=None)
-    corroboration_level = determine_corroboration_level(unique_source_count)
+    independence = assess_independence(articles, settings.syndication_domain_set)
 
-    event_row = conn.execute(
-        "SELECT category, country, country_code, title, confidence, importance FROM events WHERE id = ?",
-        (event_id,),
-    ).fetchone()
-    if not event_row:
-        return
+    # Provenance and statistics
+    providers = sorted({a["provider"] for a in articles if a.get("provider")})
+    published = [a["published_at"] for a in articles if a.get("published_at")]
+    first_seen = min(
+        [a.get("first_seen_at") or a.get("published_at") for a in articles if a.get("first_seen_at") or a.get("published_at")],
+        default=None,
+    )
+    last_seen = (
+        max(published, default=None)
+        or event["updated_at"]
+        or event["last_seen_at"]
+        or to_utc_iso(utc_now())
+    )
+    first_seen = first_seen or event["first_seen_at"] or event["created_at"]
 
-    base_confidence = float(event_row["confidence"] or 0.5)
-    classification_confidence = max(base_confidence, 0.5)
-    confidence_score = score_event_confidence(
-        {
-            "source_count": source_count,
-            "article_count": article_count,
-            "classification_confidence": classification_confidence,
-            "location_confidence": 0.9 if event_row["country_code"] else 0.7,
-            "time_confidence": 0.8,
-            "article_similarity": min(0.95, 0.6 + (article_count * 0.04)),
-        }
+    reported_casualties = None
+    if event["is_structured_observation"]:
+        try:
+            attributes = json.loads(event["data_sources"]) if event["data_sources"] else {}
+        except (TypeError, ValueError):
+            attributes = {}
+        reported_casualties = attributes.get("fatalities") if isinstance(attributes, dict) else None
+    if not reported_casualties:
+        from .normalize import extract_reported_casualties
+
+        candidates = [
+            extract_reported_casualties(f"{a['title']}. {a['description'] or ''}")
+            for a in articles
+        ]
+        candidates = [value for value in candidates if value]
+        reported_casualties = max(candidates) if candidates else None
+
+    assessment = build_event_assessment(
+        event=dict(event),
+        articles=articles,
+        independence=independence,
+        reported_casualties=reported_casualties,
     )
 
-    importance_score = score_event_importance(
-        {
-            "severity": max(event_row["importance"] or 5, 1),
-            "geographic_impact": 7 if event_row["country_code"] else 4,
-            "source_coverage": min(10, source_count + article_count // 2),
-            "human_impact": 6 if "disaster" in (event_row["category"] or "").lower() else 4,
-            "economic_impact": 5,
-            "urgency": 5 if article_count >= 2 else 3,
-        }
-    )
-
+    now_iso = to_utc_iso(utc_now())
     conn.execute(
         """
-        UPDATE events
-        SET article_count = ?,
-            source_count = ?,
-            unique_source_count = ?,
-            corroboration_level = ?,
-            first_seen_at = ?,
-            last_seen_at = ?,
-            source_domains = ?,
-            importance = ?,
-            confidence = ?,
-            event_time = COALESCE(?, event_time)
+        UPDATE events SET
+            article_count = ?, source_count = ?, unique_source_count = ?,
+            independent_source_count = ?, syndicated_source_count = ?,
+            corroboration_level = ?, first_seen_at = ?, last_seen_at = ?,
+            source_domains = ?, provider_keys = ?,
+            severity = ?, severity_label = ?, severity_components = ?,
+            confidence = ?, confidence_components = ?, confidence_explanation = ?,
+            priority_score = ?, priority_label = ?,
+            importance = ?, assessment_updated_at = ?,
+            event_state = ?, event_state_updated_at = ?, updated_at = ?
         WHERE id = ?
         """,
         (
-            article_count,
-            source_count,
-            unique_source_count,
-            corroboration_level,
-            first_seen_at,
-            last_seen_at,
-            ", ".join(domains),
-            importance_score,
-            round(confidence_score, 2),
-            last_seen_at,
+            len(articles),
+            len(independence.publisher_families) or 1,
+            independence.independent_publishers or 1,
+            independence.independent_publishers,
+            independence.syndicated_publishers,
+            assessment["corroboration_level"],
+            first_seen,
+            last_seen,
+            ", ".join(independence.publisher_families),
+            ", ".join(providers),
+            assessment["severity"]["score"],
+            assessment["severity"]["label"],
+            json.dumps(assessment["severity"]),
+            assessment["confidence"]["score"],
+            json.dumps(assessment["confidence"]),
+            json.dumps(assessment["confidence_explanation"]),
+            assessment["priority"]["score"],
+            assessment["priority"]["label"],
+            assessment["importance"],
+            now_iso,
+            assessment["state"],
+            now_iso,
+            now_iso,
             event_id,
         ),
     )
 
+    if not event["occurred_at"]:
+        conn.execute(
+            "UPDATE events SET occurred_at = COALESCE(?, occurred_at) WHERE id = ?",
+            (event["event_time"] or first_seen, event_id),
+        )
 
-def _merge_article_to_event(conn, event_id, article_id):
+    for note in independence.notes:
+        record_timeline_entry(
+            conn, event_id, now_iso, "provenance_update", note
+        )
+
+    # Entity intelligence: extracted deterministically, never merged on name
+    # similarity alone (type is part of the identity key).
+    try:
+        from ..intelligence.entities import extract_for_event
+
+        extract_for_event(conn, dict(event), articles)
+    except Exception:  # noqa: BLE001 - entity extraction must not break ingestion
+        logger.exception("[ENTITIES] extraction failed for event %s", event_id)
+
+    return assessment
+
+
+def _create_event_from_article(conn, article: dict, payload: dict) -> int:
+    now_iso = to_utc_iso(utc_now())
+    event_id = conn.execute(
+        """
+        INSERT INTO events (
+            title, summary, category, subcategory, taxonomy_version,
+            classification_method, classification_confidence,
+            country, country_code, latitude, longitude,
+            location_precision, location_text, geocoding_source, geocoding_confidence,
+            importance, confidence, article_count, source_count, unique_source_count,
+            independent_source_count, syndicated_source_count, corroboration_level,
+            first_seen_at, last_seen_at, source_domains, provider_keys,
+            event_time, occurred_at, occurred_at_precision, observed_at,
+            event_state, event_state_updated_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 5, 0.3, 1, 1, 1, 0, 0, 'single',
+                  ?, ?, ?, ?, ?, ?, ?, ?, 'newly_detected', ?, ?, ?)
+        """,
+        (
+            payload["title"],
+            payload["summary"],
+            payload["category"],
+            payload["subcategory"],
+            TAXONOMY_VERSION,
+            payload["classification_method"],
+            payload["classification_confidence"],
+            payload["country"],
+            payload["country_code"],
+            payload["latitude"],
+            payload["longitude"],
+            payload["location_precision"],
+            payload.get("location_text"),
+            payload.get("geocoding_source"),
+            payload.get("geocoding_confidence"),
+            article.get("first_seen_at") or article.get("published_at") or now_iso,
+            article.get("published_at") or now_iso,
+            ", ".join([article.get("publisher_domain") or article.get("source") or ""]).strip(", "),
+            payload.get("provider_key"),
+            payload.get("occurred_at") or article.get("published_at"),
+            payload.get("occurred_at"),
+            payload.get("occurred_at_precision") or "unknown",
+            article.get("first_seen_at") or now_iso,
+            now_iso,
+            now_iso,
+            now_iso,
+        ),
+    ).lastrowid
+    return event_id
+
+
+def _merge_article(conn, event_id: int, article_id: int) -> None:
     conn.execute(
         "INSERT OR IGNORE INTO event_articles (event_id, article_id) VALUES (?, ?)",
         (event_id, article_id),
     )
-    _update_event_statistics(conn, event_id)
 
 
-async def ingest():
-    """Collect free news sources, deduplicate articles, cluster events, and store intelligence."""
-    articles = []
-
-    # Fetch all sources concurrently. The old sequential implementation waited
-    # for every feed before moving to the next one, making a slow/unreachable
-    # feed block the entire collection cycle.
-    source_tasks = (
-        ("GDELT", fetch_gdelt(settings.gdelt_max_records)),
-        ("RSS", fetch_rss()),
-        ("Google News RSS", fetch_google_news()),
+def _store_relationship(conn, source_id: int, target_id: int, relationship: str, confidence: float, reason: str, evidence: dict) -> None:
+    conn.execute(
+        """
+        INSERT INTO event_relationships (
+            source_event_id, target_event_id, relationship, confidence, reason, evidence
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(source_event_id, target_event_id, relationship) DO UPDATE SET
+            confidence = excluded.confidence,
+            reason = excluded.reason,
+            evidence = excluded.evidence
+        """,
+        (source_id, target_id, relationship, confidence, reason, json.dumps(evidence, default=str)),
     )
-    fetched_sources = await asyncio.gather(
-        *(task for _, task in source_tasks),
-        return_exceptions=True,
-    )
-    for (source_name, _), fetched in zip(source_tasks, fetched_sources):
-        if isinstance(fetched, Exception):
-            logger.error("[%s] ERROR: %s", source_name, fetched)
-            continue
-        logger.info("[%s] Fetched %s articles", source_name, len(fetched))
-        articles.extend(fetched)
 
-    # Keep one collection cycle bounded. News feeds can return hundreds of
-    # records, while each record still requires database work and optional AI
-    # analysis. A small bounded batch keeps the UI responsive.
-    max_articles = 60
-    articles = articles[:max_articles]
-    logger.info("[INGESTION] Processing %s articles", len(articles))
+
+def _upsert_structured_observation(conn, observation: dict) -> tuple[int, bool]:
+    """Create or update an event from a structured provider record."""
+    provider = observation.get("provider")
+    record_id = observation.get("provider_record_id") or observation.get("url")
+    existing = conn.execute(
+        """
+        SELECT id FROM events
+        WHERE provider_keys = ? AND (
+            title = ? OR (source_domains LIKE ? AND occurred_at = ?)
+        )
+        ORDER BY id DESC LIMIT 1
+        """,
+        (provider, observation.get("title"), f"%{provider}%", observation.get("event_time")),
+    ).fetchone()
+
+    now_iso = to_utc_iso(utc_now())
+    occurred = observation.get("event_time") or observation.get("published_at")
+    attributes = observation.get("attributes") or {}
+
+    if existing:
+        event_id = existing["id"]
+        conn.execute(
+            """
+            UPDATE events SET
+                title = ?, summary = ?, updated_at = ?, last_seen_at = ?,
+                occurred_at = COALESCE(?, occurred_at),
+                data_sources = ?, severity = COALESCE(?, severity)
+            WHERE id = ?
+            """,
+            (
+                observation.get("title"),
+                observation.get("summary"),
+                now_iso,
+                now_iso,
+                occurred,
+                json.dumps(attributes, default=str),
+                observation.get("severity_hint"),
+                event_id,
+            ),
+        )
+        record_timeline_entry(
+            conn, event_id, now_iso, "observation_update",
+            f"Provider {provider} updated record {record_id}."
+        )
+        return event_id, False
+
+    event_id = conn.execute(
+        """
+        INSERT INTO events (
+            title, summary, category, subcategory, taxonomy_version,
+            classification_method, classification_confidence,
+            country, country_code, latitude, longitude,
+            location_precision, location_text, geocoding_source, geocoding_confidence,
+            importance, confidence, article_count, source_count, unique_source_count,
+            independent_source_count, corroboration_level, source_domains, provider_keys,
+            data_sources, is_structured_observation,
+            event_time, occurred_at, occurred_at_precision, observed_at,
+            event_state, event_state_updated_at, first_seen_at, last_seen_at,
+            created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, 'provider_structured', 0.9, ?, ?, ?, ?, ?, ?, ?, ?,
+                  5, 0.5, 0, 1, 1, 1, 'single', ?, ?, ?, 1,
+                  ?, ?, ?, ?, 'newly_detected', ?, ?, ?, ?, ?)
+        """,
+        (
+            observation.get("title"),
+            observation.get("summary"),
+            observation.get("category"),
+            observation.get("subcategory"),
+            TAXONOMY_VERSION,
+            observation.get("country"),
+            observation.get("country_code"),
+            observation.get("latitude"),
+            observation.get("longitude"),
+            observation.get("location_precision") or "unknown",
+            observation.get("location_text"),
+            provider,
+            0.9,
+            provider,
+            provider,
+            json.dumps(attributes, default=str),
+            occurred,
+            occurred,
+            "timestamp",
+            observation.get("observed_at"),
+            now_iso,
+            now_iso,
+            now_iso,
+            now_iso,
+            now_iso,
+        ),
+    ).lastrowid
+
+    record_timeline_entry(
+        conn, event_id, occurred or now_iso, "initial_detection",
+        f"First structured observation received from {provider}."
+    )
+    return event_id, True
+
+
+# ----------------------------------------------------------------------
+# Provider execution
+# ----------------------------------------------------------------------
+async def _run_provider(key: str, trigger: str):
+    """Collect one provider. Never raises: failures become a result object."""
+    provider = PROVIDERS.get(key)
+    if provider is None:
+        return None
+    try:
+        return await provider.collect(trigger=trigger)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - one provider must not break the cycle
+        from .providers.base import CollectionResult
+
+        logger.exception("[PROVIDER] %s raised during collection", key)
+        return CollectionResult(
+            provider=key, status="unavailable", errors=[f"{type(exc).__name__}: {exc}"]
+        ).finish("unavailable")
+
+
+async def collect_providers(keys: list[str] | None = None, trigger: str = "manual") -> list:
+    keys = keys or list(DEFAULT_CYCLE_PROVIDERS)
+    results = await asyncio.gather(
+        *(_run_provider(key, trigger) for key in keys), return_exceptions=True
+    )
+    return [result for result in results if result is not None and not isinstance(result, Exception)]
+
+
+# ----------------------------------------------------------------------
+# Main entry point
+# ----------------------------------------------------------------------
+async def ingest(providers: list[str] | None = None, trigger: str = "manual") -> dict:
+    started = utc_now()
+    results = await collect_providers(providers, trigger=trigger)
+
+    ai_budget = {"remaining": max(0, settings.ai_classification_max_per_cycle)}
+    counters = {
+        "providers_run": len(results),
+        "articles_seen": 0,
+        "articles_inserted": 0,
+        "duplicates_removed": 0,
+        "articles_rejected": 0,
+        "events_created": 0,
+        "events_updated": 0,
+        "structured_events_created": 0,
+        "structured_events_updated": 0,
+        "ai_analyzed": 0,
+        "ai_failed": 0,
+        "provider_errors": [],
+    }
+    per_provider: list[dict] = []
+
+    article_records: list[dict] = []
+    observation_records: list[dict] = []
+    for result in results:
+        per_provider.append(result.as_dict())
+        counters["provider_errors"].extend(result.errors)
+        provider = PROVIDERS.get(result.provider)
+        if provider and provider.produces_structured_observations:
+            observation_records.extend(result.articles)
+        else:
+            article_records.extend(result.articles)
+
+    max_articles = max(1, settings.ingestion_max_articles_per_cycle)
+    article_records = article_records[:max_articles]
+    counters["articles_seen"] = len(article_records)
 
     with write_connection() as conn:
-        existing_articles = [
-            dict(row)
-            for row in conn.execute(
-                "SELECT id, title, url, source, published_at, description, image_url, content_hash FROM articles"
-            ).fetchall()
-        ]
+        existing_articles = _load_existing_articles(conn)
         existing_events = [
             dict(row)
             for row in conn.execute(
-                "SELECT id, title, summary, category, country, country_code, latitude, longitude, importance, confidence, event_time, article_count, source_count FROM events"
+                """
+                SELECT id, title, summary, category, subcategory, country, country_code,
+                       latitude, longitude, location_precision, importance, confidence,
+                       event_time, occurred_at, article_count, independent_source_count
+                FROM events
+                WHERE is_structured_observation = 0
+                ORDER BY event_time DESC
+                LIMIT 2000
+                """
             ).fetchall()
         ]
 
-        inserted = 0
-        events_created = 0
-        ai_analyzed = 0
-        ai_failed = 0
-        duplicates_removed = 0
+        new_relationships: list[dict] = []
 
-        for article in articles:
-            url = (article.get("url") or "").strip()
-            if not url:
+        for article in article_records:
+            article_id, verdict = store_article(conn, article, existing_articles)
+            if article_id is None:
+                counters["duplicates_removed"] += 1
                 continue
+            counters["articles_inserted"] += 1
 
-            title = article.get("title") or "Untitled"
-            description = article.get("description") or ""
-            source = article.get("source") or "Unknown"
-            article_hash = create_article_hash(title, url)
-            article["content_hash"] = article_hash
+            classification = await classify_for_ingestion(article, ai_budget)
+            if classification.get("method") == "ai_assisted":
+                counters["ai_analyzed"] += 1
 
-            if find_duplicate_article(article, existing_articles):
-                duplicates_removed += 1
-                continue
+            payload = _event_payload(article, classification)
 
-            deterministic = analyze(title, description)
-            classification = classify_article(article)
-            event_record = _normalize_event_record(
-                article,
-                {
-                    **deterministic,
-                    "category": classification["category"],
-                    "confidence": classification["confidence"],
-                },
-            )
-
-            try:
-                # AI enrichment is optional. Do not contact Ollama when it is
-                # disabled/unavailable; deterministic classification still
-                # produces a usable event.
-                ai_response = None
-                if settings.ollama_enabled:
-                    logger.info("[AI] Analyzing: %s", title)
-                    ai_response = await analyze_with_ollama(
-                        title=title,
-                        description=description,
-                        source=source,
-                        url=url,
-                    )
-                    ai_analyzed += 1
-                if ai_response:
-                    event_record["title"] = ai_response.get("event_title") or event_record["title"]
-                    event_record["summary"] = ai_response.get("summary") or event_record["summary"]
-                    event_record["category"] = normalize_category(
-                        ai_response.get("category") or event_record["category"]
-                    )
-                    event_record["country"] = ai_response.get("country") or event_record["country"]
-                    event_record["country_code"] = ai_response.get("country_code") or event_record["country_code"]
-                    if ai_response.get("latitude") is not None:
-                        event_record["latitude"] = ai_response.get("latitude")
-                    if ai_response.get("longitude") is not None:
-                        event_record["longitude"] = ai_response.get("longitude")
-                    event_record["importance"] = score_event_importance(
+            best_event, best_score = None, 0.0
+            for event in existing_events:
+                comparison = compare_events(payload, event)
+                if comparison.decision == SAME_EVENT and comparison.score > best_score:
+                    best_event, best_score = event, comparison.score
+                elif comparison.decision in {"related_event", "similar_event"}:
+                    new_relationships.append(
                         {
-                            "severity": int(ai_response.get("importance") or event_record["importance"]),
-                            "geographic_impact": 7 if event_record["country_code"] else 4,
-                            "source_coverage": 4,
-                            "human_impact": 6 if "disaster" in event_record["category"].lower() else 5,
-                            "economic_impact": 4,
-                            "urgency": 6,
+                            "target_title": event.get("title"),
+                            "target_id": event.get("id"),
+                            "relationship": "related_to"
+                            if comparison.decision == "related_event"
+                            else "similar_to",
+                            "confidence": comparison.score,
+                            "reason": comparison.reason,
+                            "evidence": comparison.signals,
                         }
                     )
-                    event_record["confidence"] = max(
-                        0.0,
-                        min(1.0, float(ai_response.get("confidence") or event_record["confidence"])),
-                    )
-            except Exception as exc:
-                logger.exception("[AI ERROR] %s", exc)
-                ai_failed += 1
 
-            article_id = conn.execute(
-                """
-                INSERT INTO articles (title, url, source, published_at, description, image_url, content_hash)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    title,
-                    url,
-                    source,
-                    article.get("published_at") or "",
-                    description,
-                    article.get("image_url"),
-                    article_hash,
-                ),
-            ).lastrowid
-            inserted += 1
-            existing_articles.append(
-                {
-                    "id": article_id,
-                    "title": title,
-                    "url": url,
-                    "source": source,
-                    "published_at": article.get("published_at") or "",
-                    "description": description,
-                    "image_url": article.get("image_url"),
-                    "content_hash": article_hash,
-                }
-            )
-
-            matching_event = find_matching_event(
-                {
-                    **event_record,
-                    "published_at": article.get("published_at") or event_record["event_time"],
-                    "url": url,
-                    "source": source,
-                },
-                existing_events,
-            )
-
-            if matching_event:
-                event_id = matching_event["id"]
-                _merge_article_to_event(conn, event_id, article_id)
-                event_record.update(
+            if best_event:
+                event_id = best_event["id"]
+                _merge_article(conn, event_id, article_id)
+                counters["events_updated"] += 1
+            else:
+                event_id = _create_event_from_article(conn, article, payload)
+                _merge_article(conn, event_id, article_id)
+                existing_events.append(
                     {
-                        "event_id": event_id,
-                        "title": matching_event.get("title") or event_record["title"],
-                        "summary": matching_event.get("summary") or event_record["summary"],
-                        "category": matching_event.get("category") or event_record["category"],
+                        "id": event_id,
+                        "title": payload["title"],
+                        "summary": payload["summary"],
+                        "category": payload["category"],
+                        "subcategory": payload["subcategory"],
+                        "country": payload["country"],
+                        "country_code": payload["country_code"],
+                        "latitude": payload["latitude"],
+                        "longitude": payload["longitude"],
+                        "location_precision": payload["location_precision"],
+                        "event_time": payload["occurred_at"],
+                        "occurred_at": payload["occurred_at"],
+                        "article_count": 1,
                     }
                 )
-                conn.execute(
-                    """
-                    UPDATE events
-                    SET title = ?, summary = ?, category = ?, country = COALESCE(?, country), country_code = COALESCE(?, country_code), latitude = COALESCE(?, latitude), longitude = COALESCE(?, longitude), importance = ?, confidence = ?, event_time = COALESCE(?, event_time)
-                    WHERE id = ?
-                    """,
-                    (
-                        event_record["title"],
-                        event_record["summary"],
-                        event_record["category"],
-                        event_record["country"],
-                        event_record["country_code"],
-                        event_record["latitude"],
-                        event_record["longitude"],
-                        max(1, min(10, int(event_record["importance"]))),
-                        max(0.0, min(1.0, float(event_record["confidence"]))),
-                        event_record["event_time"],
-                        event_id,
-                    ),
+                counters["events_created"] += 1
+                record_timeline_entry(
+                    conn, event_id, article.get("published_at") or to_utc_iso(utc_now()),
+                    "initial_report",
+                    f"First report from {article.get('publisher') or article.get('source') or 'unknown source'}.",
+                    article_id=article_id,
                 )
-                _update_event_statistics(conn, event_id)
-                existing_events = [
-                    dict(row)
-                    for row in conn.execute(
-                        "SELECT id, title, summary, category, country, country_code, latitude, longitude, importance, confidence, event_time, article_count, source_count FROM events"
-                    ).fetchall()
-                ]
+
+            _recompute_event_statistics(conn, event_id)
+
+            for relationship in new_relationships[-3:]:
+                if relationship["target_id"] and relationship["target_id"] != event_id:
+                    _store_relationship(
+                        conn, event_id, relationship["target_id"],
+                        relationship["relationship"], relationship["confidence"],
+                        relationship["reason"], relationship["evidence"],
+                    )
+
+        # Structured observations (USGS, WHO, CAP, FIRMS, ReliefWeb, ACLED)
+        for observation in observation_records:
+            try:
+                event_id, created = _upsert_structured_observation(conn, observation)
+            except Exception:  # noqa: BLE001
+                logger.exception("[INGESTION] structured observation failed")
                 continue
+            if created:
+                counters["structured_events_created"] += 1
+                counters["events_created"] += 1
+            else:
+                counters["structured_events_updated"] += 1
+                counters["events_updated"] += 1
+            _recompute_event_statistics(conn, event_id)
 
-            event_id = conn.execute(
-                """
-                INSERT INTO events (
-                    title, summary, category, country, country_code, latitude, longitude,
-                    importance, confidence, article_count, source_count, unique_source_count,
-                    corroboration_level, first_seen_at, last_seen_at, source_domains, event_time
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 1, 'single', ?, ?, ?, ?)
-                """,
-                (
-                    event_record["title"],
-                    event_record["summary"],
-                    event_record["category"],
-                    event_record["country"],
-                    event_record["country_code"],
-                    event_record["latitude"],
-                    event_record["longitude"],
-                    max(1, min(10, int(event_record["importance"]))),
-                    max(0.0, min(1.0, float(event_record["confidence"]))),
-                    event_record["event_time"],
-                    event_record["event_time"],
-                    ", ".join([(article.get("source") or "Unknown").strip()])
-                    if (article.get("source") or "Unknown").strip()
-                    else "",
-                    event_record["event_time"],
-                ),
-            ).lastrowid
-            events_created += 1
-            _merge_article_to_event(conn, event_id, article_id)
-            existing_events = [
-                dict(row)
-                for row in conn.execute(
-                    "SELECT id, title, summary, category, country, country_code, latitude, longitude, importance, confidence, event_time, article_count, source_count FROM events"
-                ).fetchall()
-            ]
+        # Attach per-provider event counters before the runs are persisted.
+        for result in results:
+            provider = PROVIDERS.get(result.provider)
+            if provider and provider.produces_structured_observations:
+                result.events_created = counters["structured_events_created"]
+                result.events_updated = counters["structured_events_updated"]
+            else:
+                result.events_created = max(0, counters["events_created"] - counters["structured_events_created"])
+                result.events_updated = counters["events_updated"]
 
-        _schedule_rag_indexing()
-        return {
-            "articles_seen": len(articles),
-            "articles_inserted": inserted,
-            "duplicates_removed": duplicates_removed,
-            "events_created": events_created,
-            "ai_analyzed": ai_analyzed,
-            "ai_failed": ai_failed,
-        }
+    # Alert evaluation + RAG indexing happen after the write transaction.
+    alerts_created = 0
+    try:
+        from ..alerts.evaluator import evaluate_all_rules
+
+        alerts_created = evaluate_all_rules()
+    except Exception:  # noqa: BLE001 - alerts must never break ingestion
+        logger.exception("[ALERTS] evaluation failed")
+
+    _schedule_rag_indexing()
+
+    # Exactly one run row per provider per cycle, written after counters are set.
+    for result in results:
+        try:
+            record_run(result, trigger=trigger)
+        except Exception:  # noqa: BLE001 - health persistence must not break ingest
+            logger.exception("[PROVIDER] failed to record run for %s", result.provider)
+
+    finished = utc_now()
+    return {
+        **counters,
+        "alerts_created": alerts_created,
+        "providers": per_provider,
+        "started_at": to_utc_iso(started),
+        "finished_at": to_utc_iso(finished),
+        "duration_ms": round((finished - started).total_seconds() * 1000, 2),
+    }
+
+
+async def ingest_provider(key: str, trigger: str = "manual") -> dict:
+    return await ingest(providers=[key], trigger=trigger)

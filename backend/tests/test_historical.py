@@ -19,7 +19,8 @@ def make_db():
             id INTEGER PRIMARY KEY, title TEXT, summary TEXT, category TEXT,
             country TEXT, country_code TEXT, latitude REAL, longitude REAL,
             importance INTEGER, confidence REAL, article_count INTEGER,
-            corroboration_level TEXT, event_time TEXT, created_at TEXT
+            corroboration_level TEXT, event_time TEXT, created_at TEXT,
+            occurred_at TEXT, location_precision TEXT
         );
         CREATE TABLE articles (
             id INTEGER PRIMARY KEY, title TEXT, url TEXT, source TEXT,
@@ -32,7 +33,13 @@ def make_db():
 
 def test_event_timeline_is_chronological_and_uses_articles():
     conn = make_db()
-    conn.execute("INSERT INTO events VALUES (1,'Flood','','environment','Sri Lanka','LK',7.8,80.7,7,.8,2,'corroborated','2026-09-01T08:00:00Z','2026-09-01T08:00:00Z')")
+    conn.execute(
+        "INSERT INTO events (id, title, summary, category, country, country_code, "
+        "latitude, longitude, importance, confidence, article_count, "
+        "corroboration_level, event_time, created_at) "
+        "VALUES (1,?,?,?,?,?,NULL,NULL,?,?,?,?,?,?)",
+        ('Flood', '', 'environment', 'Sri Lanka', 'LK', 7, .8, 2, 'corroborated', '2026-09-01T08:00:00Z', '2026-09-01T08:00:00Z'),
+    )
     conn.executemany("INSERT INTO articles VALUES (?,?,?,?,?,?)", [
         (1, "Initial flood report", "https://a.example/1", "A", "2026-09-01T08:00:00Z", "Flooding reported."),
         (2, "Updated flood report", "https://b.example/2", "B", "2026-09-01T10:00:00Z", "Flooding expanded."),
@@ -45,7 +52,13 @@ def test_event_timeline_is_chronological_and_uses_articles():
 
 def test_source_diversity_counts_domains_not_articles():
     conn = make_db()
-    conn.execute("INSERT INTO events VALUES (1,'Event','','security','X','XX',None,None,7,.8,3,'single','2026-09-01T08:00:00Z','2026-09-01T08:00:00Z')")
+    conn.execute(
+        "INSERT INTO events (id, title, summary, category, country, country_code, "
+        "latitude, longitude, importance, confidence, article_count, "
+        "corroboration_level, event_time, created_at) "
+        "VALUES (1,?,?,?,?,?,NULL,NULL,?,?,?,?,?,?)",
+        ('Event', '', 'security', 'X', 'XX', 7, .8, 3, 'single', '2026-09-01T08:00:00Z', '2026-09-01T08:00:00Z'),
+    )
     conn.executemany("INSERT INTO articles VALUES (?,?,?,?,?,?)", [
         (1,"A","https://same.example/a","Same","2026-09-01T08:00:00Z",""),
         (2,"B","https://same.example/b","Same","2026-09-01T09:00:00Z",""),
@@ -59,10 +72,16 @@ def test_source_diversity_counts_domains_not_articles():
 
 def test_conflicting_claims_are_preserved():
     conn = make_db()
-    conn.execute("INSERT INTO events VALUES (1,'Incident','','security','X','XX',None,None,8,.8,2,'single','2026-09-01T08:00:00Z','2026-09-01T08:00:00Z')")
+    conn.execute(
+        "INSERT INTO events (id, title, summary, category, country, country_code, "
+        "latitude, longitude, importance, confidence, article_count, "
+        "corroboration_level, event_time, created_at) "
+        "VALUES (1,?,?,?,?,?,NULL,NULL,?,?,?,?,?,?)",
+        ('Incident', '', 'security', 'X', 'XX', 8, .8, 2, 'single', '2026-09-01T08:00:00Z', '2026-09-01T08:00:00Z'),
+    )
     conn.executemany("INSERT INTO articles VALUES (?,?,?,?,?,?)", [
         (1,"Report: 10 casualties","https://a.example/a","A","2026-09-01T08:00:00Z","10 people were killed."),
-        (2,"Report: 24 casualties","https://b.example/b","B","24 people were killed."),
+        (2,"Report: 24 casualties","https://b.example/b","B","2026-09-01T09:00:00Z","24 people were killed."),
     ])
     conn.executemany("INSERT INTO event_articles VALUES (?,?)", [(1,1),(1,2)])
     changes, claims = detect_changes(conn,1)
@@ -72,7 +91,13 @@ def test_conflicting_claims_are_preserved():
 
 def test_momentum_requires_observable_history():
     conn = make_db()
-    conn.execute("INSERT INTO events VALUES (1,'Event','','security','X','XX',None,None,7,.8,1,'single','2026-09-01T08:00:00Z','2026-09-01T08:00:00Z')")
+    conn.execute(
+        "INSERT INTO events (id, title, summary, category, country, country_code, "
+        "latitude, longitude, importance, confidence, article_count, "
+        "corroboration_level, event_time, created_at) "
+        "VALUES (1,?,?,?,?,?,NULL,NULL,?,?,?,?,?,?)",
+        ('Event', '', 'security', 'X', 'XX', 7, .8, 1, 'single', '2026-09-01T08:00:00Z', '2026-09-01T08:00:00Z'),
+    )
     conn.execute("INSERT INTO articles VALUES (?,?,?,?,?,?)",(1,"Only report","https://a.example/a","A","2026-09-01T08:00:00Z",""))
     conn.execute("INSERT INTO event_articles VALUES (?,?)",(1,1))
     assert event_momentum(conn,1)["state"] == "insufficient_data"
@@ -87,7 +112,13 @@ def test_temporal_parser_supports_explicit_ranges():
 
 def test_casualty_extraction_separates_metrics_and_ignores_unrelated_numbers():
     conn = make_db()
-    conn.execute("INSERT INTO events VALUES (1,'Incident','','security','X','XX',None,None,8,.8,1,'single','2026-09-01T08:00:00Z','2026-09-01T08:00:00Z')")
+    conn.execute(
+        "INSERT INTO events (id, title, summary, category, country, country_code, "
+        "latitude, longitude, importance, confidence, article_count, "
+        "corroboration_level, event_time, created_at) "
+        "VALUES (1,?,?,?,?,?,NULL,NULL,?,?,?,?,?,?)",
+        ('Incident', '', 'security', 'X', 'XX', 8, .8, 1, 'single', '2026-09-01T08:00:00Z', '2026-09-01T08:00:00Z'),
+    )
     conn.execute("INSERT INTO articles VALUES (?,?,?,?,?,?)", (
         1, "Incident 2026 update", "https://a.example/a", "A",
         "2026-09-01T08:00:00Z",
@@ -101,11 +132,17 @@ def test_casualty_extraction_separates_metrics_and_ignores_unrelated_numbers():
 
 def test_related_events_require_temporal_proximity_for_category_country_match():
     conn = make_db()
-    conn.executemany("INSERT INTO events VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", [
-        (1, "Current", "", "security", "X", "XX", None, None, 8, .8, 1, "single", "2026-09-10T08:00:00Z", "2026-09-10T08:00:00Z"),
-        (2, "Old unrelated", "", "security", "X", "XX", None, None, 7, .8, 1, "single", "2026-08-01T08:00:00Z", "2026-08-01T08:00:00Z"),
-        (3, "Recent similar", "", "security", "X", "XX", None, None, 7, .8, 1, "single", "2026-09-09T12:00:00Z", "2026-09-09T12:00:00Z"),
-    ])
+    conn.executemany(
+        "INSERT INTO events (id, title, summary, category, country, country_code, "
+        "latitude, longitude, importance, confidence, article_count, "
+        "corroboration_level, event_time, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        [
+            (1, "Current", "", "security", "X", "XX", None, None, 8, .8, 1, "single", "2026-09-10T08:00:00Z", "2026-09-10T08:00:00Z"),
+            (2, "Old unrelated", "", "security", "X", "XX", None, None, 7, .8, 1, "single", "2026-08-01T08:00:00Z", "2026-08-01T08:00:00Z"),
+            (3, "Recent similar", "", "security", "X", "XX", None, None, 7, .8, 1, "single", "2026-09-09T12:00:00Z", "2026-09-09T12:00:00Z"),
+        ],
+    )
     from app.intelligence.historical import ensure_relationships
     relationships = ensure_relationships(conn, 1)
     ids = {item["event_id"] for item in relationships}

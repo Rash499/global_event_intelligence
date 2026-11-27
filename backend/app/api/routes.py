@@ -8,6 +8,7 @@ from .health import router as health_router
 from .historical import router as historical_router
 from .ingestion import router as ingestion_router
 from .interactions import router as interactions_router
+from .intelligence import router as intelligence_router
 from .statistics import router as statistics_router
 
 
@@ -22,3 +23,4 @@ router.include_router(statistics_router)
 router.include_router(ingestion_router)
 router.include_router(interactions_router)
 router.include_router(ai_router)
+router.include_router(intelligence_router)
