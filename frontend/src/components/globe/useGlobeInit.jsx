@@ -42,6 +42,10 @@ export function useGlobeInit(containerRef, globeRef) {
 
     globeRef.current = globe;
 
+    // Cap the renderer's pixel ratio: uncapped high-DPI rendering makes
+    // thin polygon edges crawl/alias while the globe rotates.
+    globe.renderer()?.setPixelRatio?.(Math.min(window.devicePixelRatio || 1, 2));
+
     const controls = globe.controls();
     controls.enableZoom = true;
     controls.enablePan = false;
