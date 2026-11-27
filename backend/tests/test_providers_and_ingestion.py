@@ -163,6 +163,56 @@ def test_usgs_observation_normalisation():
     assert observation["severity_hint"] > 5
 
 
+def test_who_don_json_payload_parsing_and_normalisation():
+    """WHO retired the DON RSS feed (404); the provider must parse the
+    OData JSON API shape verified against who.int on 2026-11-27."""
+    from app.ingestion.providers.structured import WhoOutbreakProvider, _parse_who_payload
+
+    records = _parse_who_payload(
+        {
+            "@odata.context": "http://www.who.int/api/news/$metadata#diseaseoutbreaknews",
+            "value": [
+                {
+                    "Id": "older-guid",
+                    "Title": "Ebola disease outbreak - Uganda",
+                    "Summary": "WHO was notified of an outbreak of Ebola disease in Uganda.",
+                    "PublicationDateAndTime": "2026-11-20T19:00:00Z",
+                    "ItemDefaultUrl": "/2026-DON100",
+                    "UrlName": "2026-DON100",
+                },
+                {
+                    "Id": "newer-guid",
+                    "Title": "Influenza A(H5N1) - United States of America",
+                    "Summary": "Three laboratory-confirmed human infections were notified.",
+                    "PublicationDateAndTime": "2026-11-24T19:00:00Z",
+                    "ItemDefaultUrl": "/2026-DON629",
+                    "UrlName": "2026-DON629",
+                },
+            ],
+        },
+        max_entries=30,
+    )
+    # Newest first regardless of the server's ordering.
+    assert [record["record_id"] for record in records] == ["2026-DON629", "2026-DON100"]
+    assert records[0]["url"] == (
+        "https://www.who.int/emergencies/disease-outbreak-news/item/2026-DON629"
+    )
+
+    observation = WhoOutbreakProvider().normalise(records[1])
+    assert observation["category"] == "public_health"
+    assert observation["subcategory"] == "disease_outbreak"
+    # The DON API has no geography: the country comes from the title text.
+    assert observation["country_code"] == "UG"
+    assert observation["location_precision"] == "country"
+    assert observation["attributes"]["disease_reported_in_text"] == ["ebola"]
+
+
+def test_who_default_endpoint_is_the_json_api_not_the_retired_rss():
+    from app.config import Settings
+
+    assert Settings().who_api_url == "https://www.who.int/api/news/diseaseoutbreaknews"
+
+
 def test_eonet_payload_parsing_and_normalisation():
     from app.ingestion.providers.structured import EonetProvider, _parse_eonet_payload
 

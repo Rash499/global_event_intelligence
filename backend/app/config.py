@@ -140,9 +140,11 @@ class Settings(BaseSettings):
     reliefweb_base_url: str = "https://api.reliefweb.int/v2"
     reliefweb_max_records: int = 50
 
-    # WHO Disease Outbreak News (public RSS, no key).
+    # WHO Disease Outbreak News. WHO retired the DON RSS feed (the old
+    # /feeds/entity/csr/don/en/rss.xml URL now returns 404); the supported
+    # public replacement is the keyless OData JSON API below.
     who_enabled: bool = True
-    who_feed_url: str = "https://www.who.int/feeds/entity/csr/don/en/rss.xml"
+    who_api_url: str = "https://www.who.int/api/news/diseaseoutbreaknews"
     who_max_entries: int = 30
 
     # NASA FIRMS requires a free MAP_KEY.
