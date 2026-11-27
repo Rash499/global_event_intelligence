@@ -636,6 +636,28 @@
 .ws-lane-label { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ws-lane-cell { text-align: center; padding: 4px 0; border-radius: 4px; background: rgba(255, 255, 255, 0.04); color: var(--muted); font-variant-numeric: tabular-nums; }
 
+.flatmap-stage { position: relative; width: 100%; min-height: 520px; display: flex; }
+.flatmap-svg { width: 100%; height: auto; min-height: 520px; cursor: grab; touch-action: pan-y; }
+.flatmap-svg:active { cursor: grabbing; }
+.flatmap-ocean { fill: rgba(8, 25, 45, 0.65); }
+.flatmap-country { stroke: rgba(130, 205, 255, 0.25); stroke-width: 0.4; cursor: pointer; }
+.flatmap-country:hover { stroke: rgba(160, 225, 255, 0.8); stroke-width: 0.8; }
+.flatmap-country.is-selected { stroke: #00c8ff; stroke-width: 1.4; }
+.flatmap-point { cursor: pointer; }
+.flatmap-point circle { stroke: rgba(2, 10, 20, 0.65); stroke-width: 0.8; }
+.flatmap-point-count { fill: #04121f; font-size: 9px; font-weight: 700; text-anchor: middle; pointer-events: none; }
+.flatmap-controls { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; }
+.flatmap-controls button {
+  width: 30px; height: 30px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.15));
+  background: rgba(4, 18, 32, 0.85); color: var(--text); font-size: 15px; line-height: 1;
+}
+.flatmap-badge {
+  position: absolute; left: 10px; bottom: 10px; pointer-events: none;
+  font-size: 10px; color: var(--muted);
+  background: rgba(4, 18, 32, 0.75); border-radius: 6px; padding: 4px 8px;
+}
+
 .ws-convergence-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
 .ws-convergence-item { display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--line, rgba(255, 255, 255, 0.08)); padding-bottom: 12px; }
 .ws-convergence-item:last-child { border-bottom: 0; padding-bottom: 0; }

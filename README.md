@@ -472,7 +472,12 @@ page. The navigation groups reflect the workflow:
   the age of its newest event (`freshness` in the API response). Nearby pins
   can be clustered into disclosed average-position markers (click to list the
   member events). All map layers render already-collected events — no
-  additional external API is involved.
+  additional external API is involved. The map has two surfaces over the same
+  data — the 3D globe and a flat equirectangular SVG map (same bundled
+  GeoJSON, zoom/pan, identical click routing) — plus a time-replay slider
+  that replays the fetched window: only events that had occurred by the
+  replay point are shown, later/undated rows are counted in the replay note,
+  and country aggregates are regrouped for that point in time.
 - **Events** — server-side filtering and cursor pagination over
   `/api/events`, with saveable views (`/api/saved-searches`).
 - **Investigation** — `/api/events/{id}`: severity, confidence and priority as
