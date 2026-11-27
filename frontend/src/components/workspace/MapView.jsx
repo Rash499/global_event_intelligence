@@ -122,6 +122,47 @@ export default function MapView({
 
   const shading = displayData?.country_shading || [];
 
+  // Country aggregates (worldmonitor-style): every country-level event is
+  // visible on the globe as a distinct country bubble at the country's
+  // display anchor, labelled with its count - never disguised as a pin.
+  // Suppressed in "coordinates" precision mode, where the user explicitly
+  // asked for located incidents only.
+  const aggregatePoints = useMemo(
+    () =>
+      precision === "coordinates"
+        ? []
+        : shading
+            .filter((row) => row.latitude != null && row.longitude != null)
+            .map((row) => ({
+              id: `country-aggregate-${row.country_code}`,
+              title: `${row.events} event${row.events === 1 ? "" : "s"} in ${row.country || row.country_code}`,
+              country: row.country,
+              country_code: row.country_code,
+              latitude: row.latitude,
+              longitude: row.longitude,
+              importance: row.max_severity ?? 0,
+              aggregate_count: row.events,
+              is_country_aggregate: true,
+            })),
+    [shading, precision]
+  );
+
+  const globeEvents = useMemo(
+    () => [...plottable, ...aggregatePoints],
+    [plottable, aggregatePoints]
+  );
+
+  const handleGlobeSelect = useCallback(
+    (event) => {
+      if (event?.is_country_aggregate) {
+        onSelectCountry?.({ code: event.country_code, name: event.country });
+        return;
+      }
+      onSelectEvent?.(event);
+    },
+    [onSelectEvent, onSelectCountry]
+  );
+
   const handleCountry = useCallback(
     (country) => {
       if (mode === "weather") {
@@ -219,10 +260,10 @@ export default function MapView({
         <div className="ws-map-canvas">
           <Globe
             mode={mode}
-            events={plottable}
+            events={globeEvents}
             polygonEvents={shadingEvents}
             weather={weather || []}
-            onSelectEvent={onSelectEvent}
+            onSelectEvent={handleGlobeSelect}
             onSelectWeather={onSelectWeather}
             onSelectCountry={handleCountry}
             selectedCountryCode={selectedCountryCode}
@@ -251,6 +292,7 @@ export default function MapView({
           <Panel title="Honest coverage" eyebrow="WHAT THIS MAP IS NOT SHOWING">
             <dl className="ws-facts">
               <div><dt>Plotted pins</dt><dd>{formatNumber(plottable.length)}</dd></div>
+              <div><dt>Country aggregates</dt><dd>{formatNumber(aggregatePoints.length)}</dd></div>
               <div><dt>Country-level events</dt><dd>{formatNumber(countryLevel.length)}</dd></div>
               <div><dt>Unknown location</dt><dd>{formatNumber(unknownLocation.length)}</dd></div>
               <div><dt>Scope</dt><dd>{scope === "major" ? `major events · last ${days}d` : `all events · last ${days}d`}</dd></div>
