@@ -476,7 +476,12 @@ page. The navigation groups reflect the workflow:
   event/observed/published/ingested times shown separately with their precision;
   sources split into independent vs syndicated; relationships and entities.
 - **Countries** — per-dimension indicator counts and severity averages with the
-  API's coverage caveat. Deliberately no composite "risk score".
+  API's coverage caveat. Deliberately no composite "risk score". The detail
+  view also shows 24h/7d movement against the preceding windows, the reporting
+  categories present as "active signals", and a 7-day lane-by-day activity
+  grid (grouped by the map layer registry); the country table carries a fixed
+  7-day trend column. All figures describe stored reporting volume — movement
+  can reflect collection as much as conditions on the ground.
 - **Entities**, **Reports** (CSV/HTML export), **Providers** (real health),
   **System** (schema version, integrity, scheduler, AI flags, security posture).
 - **Search** — `Ctrl/Cmd-K` opens a command palette over `/api/search`

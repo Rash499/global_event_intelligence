@@ -161,6 +161,45 @@ def test_country_risk_explains_methodology_and_coverage(client, seeded):
     assert dimensions["natural_disasters"]["event_count"] == 1
 
 
+def test_country_risk_reports_movement_timeline_and_signals(client, seeded):
+    body = client.get("/api/countries/JP/risk").json()
+
+    # Japan's earthquake was 2 hours ago: inside both the 24h and 7d windows,
+    # with nothing in the preceding windows.
+    assert body["movement"] == {
+        "events_24h": 1,
+        "events_previous_24h": 0,
+        "events_7d": 1,
+        "events_previous_7d": 0,
+    }
+
+    days = body["timeline"]["days"]
+    assert len(days) == 7
+    assert sum(day["total"] for day in days) == 1
+    active = [day for day in days if day["total"]]
+    assert len(active) == 1
+    assert active[0]["by_category"]["natural_disaster"]["events"] == 1
+    assert active[0]["by_category"]["natural_disaster"]["max_severity"] == 9.1
+
+    signals = {signal["category"]: signal for signal in body["active_signals"]}
+    assert signals["natural_disaster"]["event_count"] == 1
+    assert signals["natural_disaster"]["max_severity"] == 9.1
+    assert signals["natural_disaster"]["label"] == "Natural Disasters"
+
+
+def test_countries_summary_reports_fixed_window_trend(client, seeded):
+    body = client.get("/api/countries?days=30").json()
+    rows = {row["country_code"]: row for row in body["items"]}
+    # All seeded events are within the last 24 hours, none in the prior 7d.
+    assert rows["JP"]["trend"] == {
+        "events_24h": 1,
+        "events_7d": 1,
+        "events_previous_7d": 0,
+        "direction": "rising",
+    }
+    assert rows["LK"]["trend"]["events_24h"] == 1
+
+
 def test_country_without_reporting_is_not_described_as_safe(client, seeded):
     body = client.get("/api/countries/NO/risk").json()
     assert body["coverage"]["level"] == "none"
