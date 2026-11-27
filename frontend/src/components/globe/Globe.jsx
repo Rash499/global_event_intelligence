@@ -9,6 +9,10 @@ import { useWeatherPoints } from "./useWeatherPoints";
 export default function Globe({
   mode = "events",
   events,
+  // Events used only to colour country polygons. Kept separate from
+  // `events` (points/rings/camera) so country-precision events — which must
+  // never become pins — can still shade their country on the globe.
+  polygonEvents,
   weather,
   onSelectEvent,
   onSelectWeather,
@@ -22,7 +26,7 @@ export default function Globe({
 
   useCountryPolygons({
     globeRef,
-    events,
+    events: polygonEvents ?? events,
     weather,
     mode,
     onSelectCountry,
