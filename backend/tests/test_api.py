@@ -385,6 +385,11 @@ def test_map_layer_separates_coordinates_from_country_level(client, seeded):
         if item["location_precision"] == "country":
             assert item["latitude"] is None
 
+    # Country aggregates carry a display anchor for the UI bubble, while the
+    # individual country-level events themselves keep latitude = None.
+    for row in body["country_shading"]:
+        assert row["is_country_aggregate"] is True
+        assert row["latitude"] is not None and row["longitude"] is not None
     assert body["coverage"]["country_level_only"] >= 1
     assert body["coverage"]["plotted_with_coordinates"] >= 1
     assert body["legend"]["severity_bands"]

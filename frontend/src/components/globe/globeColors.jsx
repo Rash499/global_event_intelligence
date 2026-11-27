@@ -37,6 +37,9 @@ export const getPolygonSideColor = () => "rgba(20, 50, 70, 0.38)";
 export const getPolygonStrokeColor = () => "rgba(150, 220, 255, 0.82)";
 
 export function getPointColor(event) {
+  // Country aggregates are a soft sky bubble, visually distinct from
+  // incident pins so nobody mistakes an aggregate for an exact location.
+  if (event.is_country_aggregate) return "rgba(125, 211, 252, 0.9)";
   if (event.importance >= 8) return "#ff3b5c";
   if (event.importance >= 6) return "#ffb020";
   return "#36b8ff";
@@ -64,5 +67,8 @@ export function getPolygonLabel(country, mode = "events", weather = []) {
 }
 
 export function getPointLabel(event) {
+  if (event.is_country_aggregate) {
+    return `<div style="background:#07111f;color:white;padding:10px 14px;border-radius:8px;font-family:Arial;max-width:280px;"><strong>${event.title}</strong><br/><small>Country-level aggregate — exact locations not reported. Click to explore this country.</small></div>`;
+  }
   return `<div style="background:#07111f;color:white;padding:10px 14px;border-radius:8px;font-family:Arial;max-width:280px;"><strong>${event.title}</strong><br/><small>${event.country || "Global"} · Importance ${event.importance}/10</small></div>`;
 }

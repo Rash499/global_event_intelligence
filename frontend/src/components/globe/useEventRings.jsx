@@ -9,7 +9,8 @@ export function useEventRings({ globeRef, events }) {
       (event) =>
         event.latitude !== null &&
         event.longitude !== null &&
-        event.importance >= 7
+        event.importance >= 7 &&
+        !event.is_country_aggregate
     );
 
     globeRef.current

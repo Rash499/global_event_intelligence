@@ -1049,6 +1049,17 @@ def map_events(
                 params,
             ).fetchall()
         ]
+        # Display anchor for each aggregate (country centroid from the local
+        # registry). This is explicitly a *display anchor for an aggregate*,
+        # never an event coordinate: `is_country_aggregate` tells the UI to
+        # render it as a country bubble labelled with its event count, not
+        # as an incident pin. Individual country-level events keep
+        # latitude/longitude = None everywhere.
+        for row in country_rows:
+            anchor = coordinate_for_country(row.get("country_code"))
+            row["latitude"] = anchor[0] if anchor else None
+            row["longitude"] = anchor[1] if anchor else None
+            row["is_country_aggregate"] = True
     finally:
         conn.close()
 

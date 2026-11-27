@@ -40,7 +40,7 @@ vi.mock("../../services/api.jsx", () => ({
           importance: 9,
         },
       ],
-      country_shading: [{ country_code: "LK", country: "Sri Lanka", events: 1, max_severity: 6.4 }],
+      country_shading: [{ country_code: "LK", country: "Sri Lanka", events: 1, max_severity: 6.4, latitude: 7.87, longitude: 80.77, is_country_aggregate: true }],
       // (second item added below in items)
       coverage: { plotted_with_coordinates: 0, country_level_only: 1, no_location: 0 },
       legend: { note: "test" },
@@ -71,8 +71,12 @@ describe("MapView", () => {
     const lastProps = globeProps.mock.calls.at(-1)[0];
     // The "near Tokyo" event has coordinates at approximate precision: it
     // must become a pin (a stale whitelist used to drop it silently).
-    expect(lastProps.events).toHaveLength(1);
-    expect(lastProps.events[0].location_precision).toBe("approximate");
+    expect(lastProps.events.filter((e) => !e.is_country_aggregate)).toHaveLength(1);
+    expect(lastProps.events.find((e) => !e.is_country_aggregate).location_precision).toBe("approximate");
+    // Plus the Sri Lanka country aggregate bubble (labelled, not a pin).
+    const aggregate = lastProps.events.find((e) => e.is_country_aggregate);
+    expect(aggregate.country_code).toBe("LK");
+    expect(aggregate.aggregate_count).toBe(1);
     expect(lastProps.polygonEvents).toHaveLength(2);
     expect(lastProps.polygonEvents[0].country_code).toBe("LK");
 
