@@ -87,7 +87,12 @@ export const LOCATION_PRECISION = {
   exact: { label: "Exact coordinates", plottable: true, rank: 4 },
   city: { label: "City", plottable: true, rank: 3 },
   locality: { label: "Locality", plottable: true, rank: 3 },
+  admin_region: { label: "Administrative region", plottable: true, rank: 2 },
   region: { label: "Region", plottable: true, rank: 2 },
+  // Backend geolocation emits "approximate" (with real coordinates) for
+  // "near/around <city>" reporting. It must plot - at reduced precision -
+  // or a large share of located events silently vanish from the map.
+  approximate: { label: "Approximate (near a named place)", plottable: true, rank: 2 },
   country: { label: "Country only", plottable: false, rank: 1 },
   unknown: { label: "Unknown location", plottable: false, rank: 0 },
 };

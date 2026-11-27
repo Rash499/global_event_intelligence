@@ -4,7 +4,7 @@ import Globe from "../Globe.jsx";
 import WeatherModeToggle from "../weather/WeatherModeToggle.jsx";
 import useApiResource from "../../hooks/useApiResource";
 import { getMapEvents } from "../../services/api.jsx";
-import { formatCount, formatNumber, severityColour, severityBand } from "../../services/format.jsx";
+import { formatCount, formatNumber, isPlottable, severityColour, severityBand } from "../../services/format.jsx";
 import { Badge, ErrorState, Empty, Loading, Panel, SourceNote, Toolbar, UpdatedAt } from "./primitives.jsx";
 
 const PRECISION_MODES = [
@@ -95,12 +95,7 @@ export default function MapView({
   const plottable = useMemo(
     () =>
       displayItems
-        .filter(
-          (event) =>
-            event.latitude !== null &&
-            event.longitude !== null &&
-            ["exact", "city", "locality", "region"].includes(event.location_precision)
-        )
+        .filter((event) => isPlottable(event))
         .map((event) => ({ ...event, importance: event.severity ?? event.importance ?? 0 })),
     [displayItems]
   );

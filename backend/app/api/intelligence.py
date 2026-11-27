@@ -982,7 +982,7 @@ def map_events(
         params.extend([MAJOR_SEVERITY_THRESHOLD, MAJOR_IMPORTANCE_THRESHOLD])
     if precision == "coordinates":
         conditions.append("e.latitude IS NOT NULL AND e.longitude IS NOT NULL")
-        conditions.append("e.location_precision IN ('exact','city','region','locality')")
+        conditions.append("e.location_precision IN ('exact','city','admin_region','region','locality','approximate')")
     elif precision == "country":
         conditions.append("e.location_precision = 'country'")
 
@@ -1016,7 +1016,7 @@ def map_events(
             f"""
             SELECT COUNT(*) FROM events e WHERE {base_where}
               AND e.latitude IS NOT NULL AND e.longitude IS NOT NULL
-              AND e.location_precision IN ('exact','city','region','locality')
+              AND e.location_precision IN ('exact','city','admin_region','region','locality','approximate')
             """,
             params,
         ).fetchone()[0]
