@@ -101,6 +101,8 @@ class Settings(BaseSettings):
     scheduler_gdelt_interval_seconds: int = 1800
     scheduler_google_news_interval_seconds: int = 1800
     scheduler_usgs_interval_seconds: int = 600
+    scheduler_eonet_interval_seconds: int = 3600
+    scheduler_gdacs_interval_seconds: int = 1800
     scheduler_reliefweb_interval_seconds: int = 3600
     scheduler_who_interval_seconds: int = 3600
     scheduler_firms_interval_seconds: int = 3600
@@ -115,6 +117,20 @@ class Settings(BaseSettings):
     usgs_feed_url: str = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson"
     usgs_min_magnitude: float = 2.5
     usgs_max_features: int = 200
+
+    # NASA EONET v3: public API, no key or registration required.
+    # https://eonet.gsfc.nasa.gov/docs/v3
+    eonet_enabled: bool = True
+    eonet_base_url: str = "https://eonet.gsfc.nasa.gov/api/v3"
+    eonet_days: int = 30
+    eonet_max_events: int = 200
+
+    # GDACS (UN/EC Global Disaster Alert and Coordination System): public
+    # REST API, no authentication required.
+    # https://www.gdacs.org/gdacsapi/swagger/index.html
+    gdacs_enabled: bool = True
+    gdacs_api_url: str = "https://www.gdacs.org/gdacsapi/api/Events/geteventlist/latest"
+    gdacs_max_events: int = 100
 
     # ReliefWeb API v2 (v1 is decommissioned). Since 1 Nov 2025 the
     # ``appname`` must be pre-approved by ReliefWeb via their request form:

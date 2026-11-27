@@ -511,6 +511,8 @@ upstream service can theoretically provide.
 | GDELT | no | implemented | Document API; requests paced to 1 per 5s with 429 backoff per upstream policy |
 | Google News RSS | no | implemented | Query-based RSS (unofficial feed; no published terms/limits) |
 | USGS earthquakes | no | implemented | Structured observations (`is_structured_observation`) |
+| NASA EONET natural events | no | implemented, **unverified** live | Public v3 API (wildfires, storms, floods, volcanoes…); coordinates stored exactly as reported |
+| GDACS disaster alerts | no | implemented, **unverified** live | UN/EC public REST API; alert level/score preserved, numeric severity is a disclosed derived hint |
 | ReliefWeb | pre-approved `appname` | implemented (API v2), disabled by default | Approval required since 1 Nov 2025: https://apidoc.reliefweb.int/ |
 | WHO disease outbreak news | no | implemented | Public RSS |
 | NASA FIRMS | free `FIRMS_MAP_KEY` | implemented, needs external config | Reports `not_configured` until the key is set |
@@ -528,6 +530,7 @@ anywhere, and every credential-gated provider is disabled by default.
 | Integration | Cost status | Key condition |
 | --- | --- | --- |
 | RSS, GDELT, Google News RSS, USGS, WHO RSS | Free | Keyless. GDELT throttles bursts (429); the app paces requests. Publisher/WHO content stays under its owners' terms — WHO reuse is commonly CC BY-NC-SA |
+| NASA EONET, GDACS | Free | Keyless public APIs (verified 2026-11-27); no registration, no payment details. Event metadata links back to the source; third-party source content keeps its own terms |
 | NASA FIRMS | Free with registration | Free MAP_KEY by email; 5,000 transactions / 10 min |
 | ReliefWeb | Free, approval-gated | Pre-approved appname (v2 API) required since 1 Nov 2025 |
 | Open-Meteo (weather) | Free, **non-commercial only** | Free API licence excludes commercial use; commercial deployments need a paid Open-Meteo subscription. Data CC BY 4.0 |
