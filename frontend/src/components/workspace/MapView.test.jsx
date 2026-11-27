@@ -27,6 +27,7 @@ vi.mock("../../services/api.jsx", () => ({
           location_precision: "country",
           severity: 6.4,
           importance: 6,
+          occurred_at: new Date().toISOString(),
         },
         {
           id: 8,
@@ -38,6 +39,7 @@ vi.mock("../../services/api.jsx", () => ({
           location_precision: "approximate",
           severity: 9.1,
           importance: 9,
+          occurred_at: new Date().toISOString(),
         },
       ],
       country_shading: [{ country_code: "LK", country: "Sri Lanka", events: 1, max_severity: 6.4, latitude: 7.87, longitude: 80.77, is_country_aggregate: true }],
@@ -52,6 +54,13 @@ vi.mock("../Globe.jsx", () => ({
   default: (props) => {
     globeProps(props);
     return <div data-testid="globe" />;
+  },
+}));
+
+vi.mock("../globe/FlatMap.jsx", () => ({
+  default: (props) => {
+    globeProps(props);
+    return <div data-testid="flat-map" />;
   },
 }));
 
@@ -112,5 +121,46 @@ describe("MapView", () => {
       "aria-pressed",
       "false"
     );
+  });
+
+  it("switches between globe and flat map surfaces with the same data", async () => {
+    render(<MapView mode="events" />);
+    await waitFor(() =>
+      expect(screen.getByText(/showing all events in that window instead/i)).toBeInTheDocument()
+    );
+    expect(screen.getByTestId("globe")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Flat map" }));
+    expect(screen.getByTestId("flat-map")).toBeInTheDocument();
+    expect(screen.queryByTestId("globe")).not.toBeInTheDocument();
+    // The flat surface receives the same points (pin + country aggregate).
+    const flatProps = globeProps.mock.calls.at(-1)[0];
+    expect(flatProps.events).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "Globe" }));
+    expect(screen.getByTestId("globe")).toBeInTheDocument();
+  });
+
+  it("time replay hides events that had not occurred yet at the replay point", async () => {
+    render(<MapView mode="events" />);
+    await waitFor(() =>
+      expect(screen.getByText(/showing all events in that window instead/i)).toBeInTheDocument()
+    );
+    // Both fixture events occurred "now"; replaying to the start of the
+    // 7-day window must hide both pins and the aggregate, and say so.
+    fireEvent.change(screen.getByLabelText(/Time replay position/), {
+      target: { value: "0" },
+    });
+    await waitFor(() =>
+      expect(screen.getByText(/Time replay: showing 0 events/)).toBeInTheDocument()
+    );
+    const lastProps = globeProps.mock.calls.at(-1)[0];
+    expect(lastProps.events).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Back to live" }));
+    await waitFor(() => {
+      const props = globeProps.mock.calls.at(-1)[0];
+      expect(props.events).toHaveLength(2);
+    });
   });
 });

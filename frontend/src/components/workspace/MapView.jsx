@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 
 import Globe from "../Globe.jsx";
+import FlatMap from "../globe/FlatMap.jsx";
 import WeatherModeToggle from "../weather/WeatherModeToggle.jsx";
 import useApiResource from "../../hooks/useApiResource";
 import { getMapEvents } from "../../services/api.jsx";
@@ -67,6 +68,12 @@ export default function MapView({
   const [enabledLayers, setEnabledLayers] = useState(ALL_LAYER_IDS);
   const [clustering, setClustering] = useState(true);
   const [selectedCluster, setSelectedCluster] = useState(null);
+  // Dual map surface (worldmonitor pattern): 3D globe or flat 2D map, same
+  // data and click routing either way.
+  const [viewMode, setViewMode] = useState("globe");
+  // Time replay: when set, only events that had occurred by
+  // (window start + replayDays) are shown. Null = live (whole window).
+  const [replayDays, setReplayDays] = useState(null);
 
   const allLayersOn = enabledLayers.length === MAP_LAYERS.length;
   const categoriesParam = useMemo(
@@ -121,14 +128,35 @@ export default function MapView({
   const displayItems = fallbackActive ? fallbackLayer.data.items : items;
   const displayData = fallbackActive ? fallbackLayer.data : layer.data;
 
+  // Time replay works over the already-fetched rows: an event is visible
+  // when its occurrence time is at or before the replay cutoff. Events
+  // without an occurrence time are hidden during replay (and counted in
+  // the replay note) rather than silently kept or dropped.
+  const replayActive = replayDays !== null && replayDays < days;
+  const replayCutoffMs = useMemo(
+    () =>
+      replayActive
+        ? Date.now() - (days - replayDays) * 24 * 60 * 60 * 1000
+        : null,
+    [replayActive, replayDays, days]
+  );
+  const visibleItems = useMemo(() => {
+    if (!replayActive || replayCutoffMs === null) return displayItems;
+    return displayItems.filter((event) => {
+      const t = event.occurred_at ? Date.parse(event.occurred_at) : NaN;
+      return Number.isFinite(t) && t <= replayCutoffMs;
+    });
+  }, [displayItems, replayActive, replayCutoffMs]);
+  const replayHiddenCount = displayItems.length - visibleItems.length;
+
   // This is the honesty rule: a pin requires coordinates *and* a precision that
   // supports a point. Country-level rows are never given a synthetic position.
   const plottable = useMemo(
     () =>
-      displayItems
+      visibleItems
         .filter((event) => isPlottable(event))
         .map((event) => ({ ...event, importance: event.severity ?? event.importance ?? 0 })),
-    [displayItems]
+    [visibleItems]
   );
 
   // Country-precision events cannot be pins, but they *can* shade their
@@ -136,19 +164,19 @@ export default function MapView({
   // map is never blank just because reporting is country-level.
   const shadingEvents = useMemo(
     () =>
-      displayItems
+      visibleItems
         .filter((event) => event.country_code)
         .map((event) => ({ ...event, importance: event.severity ?? event.importance ?? 0 })),
-    [displayItems]
+    [visibleItems]
   );
 
   const countryLevel = useMemo(
-    () => displayItems.filter((event) => event.location_precision === "country"),
-    [displayItems]
+    () => visibleItems.filter((event) => event.location_precision === "country"),
+    [visibleItems]
   );
   const unknownLocation = useMemo(
-    () => displayItems.filter((event) => !event.location_precision || event.location_precision === "unknown"),
-    [displayItems]
+    () => visibleItems.filter((event) => !event.location_precision || event.location_precision === "unknown"),
+    [visibleItems]
   );
 
   const shading = displayData?.country_shading || [];
@@ -158,11 +186,48 @@ export default function MapView({
   // display anchor, labelled with its count - never disguised as a pin.
   // Suppressed in "coordinates" precision mode, where the user explicitly
   // asked for located incidents only.
+  // During replay the backend shading describes the whole window, so the
+  // aggregates are regrouped from the visible country-level rows instead
+  // (positions still come from the backend's country display anchors).
+  const replayShading = useMemo(() => {
+    if (!replayActive) return null;
+    const anchors = new Map(
+      shading
+        .filter((row) => row.latitude != null && row.longitude != null)
+        .map((row) => [row.country_code, row])
+    );
+    const grouped = new Map();
+    for (const event of countryLevel) {
+      const anchor = anchors.get(event.country_code);
+      if (!anchor) continue;
+      const entry =
+        grouped.get(event.country_code) ||
+        {
+          country_code: event.country_code,
+          country: event.country || anchor.country,
+          events: 0,
+          max_severity: null,
+          latitude: anchor.latitude,
+          longitude: anchor.longitude,
+          is_country_aggregate: true,
+        };
+      entry.events += 1;
+      if (event.severity != null) {
+        entry.max_severity =
+          entry.max_severity == null ? event.severity : Math.max(entry.max_severity, event.severity);
+      }
+      grouped.set(event.country_code, entry);
+    }
+    return [...grouped.values()];
+  }, [replayActive, shading, countryLevel]);
+
+  const effectiveShading = replayShading ?? shading;
+
   const aggregatePoints = useMemo(
     () =>
       precision === "coordinates"
         ? []
-        : shading
+        : effectiveShading
             .filter((row) => row.latitude != null && row.longitude != null)
             .map((row) => ({
               id: `country-aggregate-${row.country_code}`,
@@ -175,7 +240,7 @@ export default function MapView({
               aggregate_count: row.events,
               is_country_aggregate: true,
             })),
-    [shading, precision]
+    [effectiveShading, precision]
   );
 
   // Nearby pins are merged into disclosed cluster markers (position = the
@@ -243,6 +308,23 @@ export default function MapView({
           </p>
         </div>
         <div className="ws-head-meta">
+          <fieldset className="ws-segmented">
+            <legend>Map view</legend>
+            {[
+              { id: "globe", label: "Globe" },
+              { id: "flat", label: "Flat map" },
+            ].map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                aria-pressed={viewMode === option.id}
+                className={viewMode === option.id ? "is-active" : ""}
+                onClick={() => setViewMode(option.id)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </fieldset>
           <WeatherModeToggle mode={mode} onChange={onModeChange} />
           <UpdatedAt value={layer.updatedAt} loading={layer.loading} />
         </div>
@@ -283,7 +365,10 @@ export default function MapView({
               <span>Window (days)</span>
               <input
                 type="number" min="1" max="90" value={days}
-                onChange={(event) => setDays(Math.max(1, Math.min(90, Number(event.target.value) || 1)))}
+                onChange={(event) => {
+                  setDays(Math.max(1, Math.min(90, Number(event.target.value) || 1)));
+                  setReplayDays(null);
+                }}
               />
             </label>
             <label className="ws-field ws-field-narrow">
@@ -297,6 +382,32 @@ export default function MapView({
               <span>Category</span>
               <input value={category} onChange={(event) => setCategory(event.target.value)} placeholder="e.g. armed_conflict" />
             </label>
+            <label className="ws-field">
+              <span>
+                Time replay{" "}
+                {replayActive
+                  ? `— up to ${new Date(replayCutoffMs).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
+                  : "— live"}
+              </span>
+              <input
+                type="range"
+                min="0"
+                max={days}
+                step="0.25"
+                value={replayDays ?? days}
+                aria-label="Time replay position in the selected window"
+                onChange={(event) => {
+                  const value = Number(event.target.value);
+                  setReplayDays(value >= days ? null : value);
+                  setSelectedCluster(null);
+                }}
+              />
+            </label>
+            {replayActive && (
+              <button type="button" className="ws-button" onClick={() => setReplayDays(null)}>
+                Back to live
+              </button>
+            )}
             <button type="button" className="ws-button" onClick={layer.reload}>Refresh</button>
           </Toolbar>
         </Panel>
@@ -310,18 +421,40 @@ export default function MapView({
         </p>
       )}
 
+      {replayActive && (
+        <p className="ws-inline-note" role="status">
+          Time replay: showing {formatCount(visibleItems.length, "event")} that had occurred by{" "}
+          {new Date(replayCutoffMs).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })} —{" "}
+          {formatCount(replayHiddenCount, "event")} later in (or undated in) the fetched window{" "}
+          {replayHiddenCount === 1 ? "is" : "are"} hidden, and country aggregates are regrouped for this
+          point in time.
+        </p>
+      )}
+
       <div className="ws-map-grid">
         <div className="ws-map-canvas">
-          <Globe
-            mode={mode}
-            events={globeEvents}
-            polygonEvents={shadingEvents}
-            weather={weather || []}
-            onSelectEvent={handleGlobeSelect}
-            onSelectWeather={onSelectWeather}
-            onSelectCountry={handleCountry}
-            selectedCountryCode={selectedCountryCode}
-          />
+          {viewMode === "globe" ? (
+            <Globe
+              mode={mode}
+              events={globeEvents}
+              polygonEvents={shadingEvents}
+              weather={weather || []}
+              onSelectEvent={handleGlobeSelect}
+              onSelectWeather={onSelectWeather}
+              onSelectCountry={handleCountry}
+              selectedCountryCode={selectedCountryCode}
+            />
+          ) : (
+            <FlatMap
+              mode={mode}
+              events={globeEvents}
+              polygonEvents={shadingEvents}
+              weather={weather || []}
+              onSelectEvent={handleGlobeSelect}
+              onSelectCountry={handleCountry}
+              selectedCountryCode={selectedCountryCode}
+            />
+          )}
           {layer.loading && <div className="map-loading" role="status">Loading map layer…</div>}
           {layer.error && (
             <div className="ws-map-overlay">
@@ -430,10 +563,13 @@ export default function MapView({
             )}
           </Panel>
 
-          {shading.length > 0 && (
+          {effectiveShading.length > 0 && (
             <Panel title="Country shading" eyebrow="COUNTRY-LEVEL EVENTS">
+              {replayActive && (
+                <p className="ws-muted ws-small">Counts at the replay point in time.</p>
+              )}
               <ul className="ws-rank-list">
-                {shading
+                {effectiveShading
                   .slice()
                   .sort((a, b) => (b.max_severity || 0) - (a.max_severity || 0))
                   .slice(0, 12)
