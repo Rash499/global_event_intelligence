@@ -5,7 +5,7 @@ rebuild, no fabricated intelligence, no new infrastructure.
 
 | Area | Before | After |
 | --- | --- | --- |
-| Backend tests | 0 passing (one file did not compile) | **228 passing** |
+| Backend tests | 0 passing (one file did not compile) | **230 passing** |
 | Migrations | `CREATE TABLE IF NOT EXISTS` + ad-hoc `ALTER` | 6 numbered, reversible-by-backup migrations with version check |
 | Provider health | errors swallowed | per-provider status, retries, circuit breaker, run history |
 | Severity / confidence / priority | one synthetic "importance" | three separate, explainable scores with stored components |
@@ -179,16 +179,31 @@ never run), `degraded` (recovered after retries, partial failure, or stale),
 ## 7. Quality gates
 
 ```
-backend:   python -m pytest -q            → 228 passed
+backend:   python -m pytest -q            → 230 passed
 frontend:  npx tsc -b                     → clean
 frontend:  npx vitest run                 → 104 passed (11 files)
 frontend:  npm run build                  → success
 migrations: verified via /api/system/status (schema current, integrity ok)
-endpoints:  all 13 checked routes return 200 against a live server
+endpoints:  all 15 checked routes return 200 against a live server
 ```
 
 CI (`.github/workflows/ci.yml`) runs the backend suite and the frontend
 typecheck + tests + production build on every push and pull request.
+
+### CI fixes (PR completion pass)
+
+Both CI jobs were failing on a fresh runner while passing in a developer
+environment; both root causes were environmental, not application logic:
+
+1. **Backend:** `test_statistics_overview_includes_timeline_and_category_breakdown`
+   used a module-level `TestClient(app)` that never enters the context manager,
+   so migrations/startup never ran and the endpoint 500'd (`no such table:
+   events`) wherever no pre-existing dev database existed. The test now uses
+   the isolated `client` fixture (throwaway migrated database).
+2. **Frontend:** vitest failed during startup loading `undici` because CI
+   pinned Node 20 while `jsdom@30` requires Node `^22.22.2 || ^24.15.0`.
+   CI now uses Node 22, `npm ci` against the committed lockfile, and
+   `frontend/package.json` declares the matching `engines` range.
 
 ---
 

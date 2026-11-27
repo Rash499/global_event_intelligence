@@ -66,17 +66,23 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          # jsdom 30 (vitest environment) requires Node ^22.22.2 || ^24.15.0.
+          # Pinning Node 20 made vitest fail at startup while loading undici,
+          # before any test ran. Keep this in sync with `engines` in
+          # frontend/package.json.
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
       - name: Show environment
         run: |
           node -v
           npm -v
           node -e "console.log(require('./package.json').devDependencies)"
       - name: Install dependencies
-        # `npm install` rather than `npm ci`: the committed lockfile predates
-        # this iteration and the sandbox registry mirror cannot be trusted to
-        # reproduce it byte-for-byte. The build and tests are the real gate.
-        run: npm install --no-audit --no-fund
+        # `npm ci` installs exactly the committed lockfile, so CI tests the
+        # same dependency tree developers run locally. The lockfile is kept
+        # in sync with package.json (verified by `npm ci` succeeding).
+        run: npm ci --no-audit --no-fund
       - name: Typecheck
         run: npx tsc -b
       - name: Unit tests

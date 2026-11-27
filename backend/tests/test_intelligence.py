@@ -187,7 +187,11 @@ def test_multiple_independent_sources_have_stronger_corroboration():
     assert determine_corroboration_level(5) == "strong"
 
 
-def test_statistics_overview_includes_timeline_and_category_breakdown():
+def test_statistics_overview_includes_timeline_and_category_breakdown(client):
+    # Uses the isolated `client` fixture (throwaway migrated database) rather
+    # than the module-level client: the module-level client never enters the
+    # TestClient context manager, so app startup/migrations never run and the
+    # endpoint 500s on a fresh checkout with no pre-existing dev database.
     response = client.get("/api/statistics/overview")
 
     assert response.status_code == 200
