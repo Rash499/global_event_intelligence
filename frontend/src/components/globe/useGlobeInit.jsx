@@ -11,14 +11,26 @@ export function useGlobeInit(containerRef, globeRef) {
       return;
     }
 
-    // No remote earth textures: the previous unpkg globe/bump images made
-    // three.js re-upload immutable textures (WebGL "glTexStorage2D: Texture
-    // is immutable") and added an unvetted CDN dependency at runtime. The
-    // sphere is a plain material; country polygons drawn from the bundled
-    // world.geojson provide the landmasses.
+    // Attractive night-earth look, without the old WebGL texture error:
+    // the earth texture is bundled with the app (public/textures/, copied
+    // from the three-globe example assets) instead of hot-loaded from
+    // unpkg, and it is loaded exactly once through our own TextureLoader
+    // with fixed settings (sRGB, no re-uploads) and disposed on unmount.
+    // The previous setup let globe.gl juggle remote globe+bump textures,
+    // which produced "glTexStorage2D: Texture is immutable" in three.js.
+    const earthTexture = new THREE.TextureLoader().load(
+      "/textures/earth-night.jpg"
+    );
+    earthTexture.colorSpace = THREE.SRGBColorSpace;
+    earthTexture.anisotropy = 4;
+
     const globe = Globe()(container)
       .globeMaterial(
-        new THREE.MeshPhongMaterial({ color: "#0a2a44", shininess: 8 })
+        new THREE.MeshPhongMaterial({
+          map: earthTexture,
+          shininess: 12,
+          specular: new THREE.Color("#1a3a52"),
+        })
       )
       .backgroundColor("rgba(0,0,0,0)")
       .showAtmosphere(true)
@@ -83,6 +95,10 @@ export function useGlobeInit(containerRef, globeRef) {
       globe.polygonsData([]);
       globe.controls()?.dispose();
       globe.renderer()?.dispose();
+      // Dispose our texture/material so a remount (React StrictMode) never
+      // reuses a texture already uploaded to a disposed WebGL context.
+      earthTexture.dispose();
+      globe.globeMaterial()?.dispose?.();
 
       if (globeRef.current === globe) {
         globeRef.current = null;
