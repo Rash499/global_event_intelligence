@@ -259,7 +259,7 @@ Enable the assistant in the backend environment:
 ```bash
 # backend/.env
 RAG_ENABLED=true
-RAG_EMBEDDING_PROVIDER=ollama          # ollama | hashing (offline, no server needed)
+RAG_EMBEDDING_PROVIDER=hashing         # hashing (offline default) | ollama (local only; auto-falls back to hashing if unreachable)
 RAG_VECTOR_STORE=auto                  # auto | sqlite | qdrant
 QDRANT_URL=http://localhost:6333
 QDRANT_COLLECTION=global_event_intelligence
@@ -501,15 +501,35 @@ upstream service can theoretically provide.
 | Source | Key required | Status | Notes |
 | --- | --- | --- | --- |
 | RSS (configurable feed list) | no | implemented | Per-feed fetching, per-feed error isolation |
-| GDELT | no | implemented | Document API, 250-record pages |
-| Google News RSS | no | implemented | Query-based RSS |
+| GDELT | no | implemented | Document API; requests paced to 1 per 5s with 429 backoff per upstream policy |
+| Google News RSS | no | implemented | Query-based RSS (unofficial feed; no published terms/limits) |
 | USGS earthquakes | no | implemented | Structured observations (`is_structured_observation`) |
-| ReliefWeb | no | implemented | Humanitarian reports API |
+| ReliefWeb | pre-approved `appname` | implemented (API v2), disabled by default | Approval required since 1 Nov 2025: https://apidoc.reliefweb.int/ |
 | WHO disease outbreak news | no | implemented | Public RSS |
-| NASA FIRMS | `FIRMS_MAP_KEY` | implemented, needs external config | Reports `not_configured` until the key is set |
+| NASA FIRMS | free `FIRMS_MAP_KEY` | implemented, needs external config | Reports `not_configured` until the key is set |
 | CAP alert feeds | feed URLs | implemented, needs external config | Validated on ingest |
-| ACLED | licensed account | implemented, blocked on licensing | Never enabled by default; not tested against a live account |
-| Ollama (AI assessment) | local model | optional | Lazy import; the platform is fully functional without it |
+| ACLED | licensed account | implemented, **unverified** against a live account | Never enabled by default; Providers page marks it unverified |
+| Ollama (AI assessment) | local model | optional | Local only; the platform is fully functional without it |
+
+### Cost and licensing
+
+Verified 2026-11-27 (see `docs/DELIVERY_REPORT.md`). **Free software is not
+free hosting:** you still pay for your own machine/VPS and bandwidth, but no
+provider in this table can bill you — no payment details are collected
+anywhere, and every credential-gated provider is disabled by default.
+
+| Integration | Cost status | Key condition |
+| --- | --- | --- |
+| RSS, GDELT, Google News RSS, USGS, WHO RSS | Free | Keyless. GDELT throttles bursts (429); the app paces requests. Publisher/WHO content stays under its owners' terms — WHO reuse is commonly CC BY-NC-SA |
+| NASA FIRMS | Free with registration | Free MAP_KEY by email; 5,000 transactions / 10 min |
+| ReliefWeb | Free, approval-gated | Pre-approved appname (v2 API) required since 1 Nov 2025 |
+| Open-Meteo (weather) | Free, **non-commercial only** | Free API licence excludes commercial use; commercial deployments need a paid Open-Meteo subscription. Data CC BY 4.0 |
+| ACLED, CAP feeds | Conditional | Licence (ACLED) or operator-supplied official feeds (CAP); both disabled by default |
+| Ollama, SQLite, Qdrant (local), hashing embeddings | Free | Run locally; Ollama **Cloud** and Qdrant **Cloud** are paid and are never used by default — keep `OLLAMA_URL`/`QDRANT_URL` local |
+| Reddit, X (Twitter) | Not integrated (deliberately) | X has no free tier for new developers (pay-per-use credits) and Reddit requires approval with commercial use under separate agreement, so neither is included |
+
+RAG defaults to the offline `hashing` embedder and SQLite vector store, so a
+fresh clone works with zero installs beyond Python/Node.
 
 Provider health states are `healthy`, `idle`, `degraded`, `unavailable`,
 `not_configured` and `disabled`. Only a provider with at least one successful

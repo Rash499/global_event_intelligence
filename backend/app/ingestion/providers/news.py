@@ -172,6 +172,15 @@ GDELT_QUERY_PROFILES: dict[str, str] = {
 }
 
 
+def _retry_after_seconds(response, fallback: float) -> float:
+    """Parse a ``Retry-After`` header (seconds form); fall back if absent."""
+    raw = response.headers.get("Retry-After") if response is not None else None
+    try:
+        return max(0.0, float(raw)) if raw else fallback
+    except (TypeError, ValueError):
+        return fallback
+
+
 class GdeltProvider(SourceProvider):
     key = "gdelt"
     name = "GDELT Global Knowledge Graph"
@@ -180,6 +189,61 @@ class GdeltProvider(SourceProvider):
     default_interval_seconds = 1800
 
     API_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
+
+    def __init__(self, config=None) -> None:
+        super().__init__(config)
+        # Monotonic timestamp of the last GDELT request. Providers are
+        # process-wide singletons, so this paces requests across query
+        # profiles *and* across the base collector's retries of fetch_raw.
+        self._last_request_at: float | None = None
+
+    def _seconds_until_next_request(self, now: float) -> float:
+        """How long to wait before the next request is within the pacing rule."""
+        interval = max(0.0, float(self.config.gdelt_request_interval_seconds))
+        if self._last_request_at is None or interval <= 0:
+            return 0.0
+        return max(0.0, interval - (now - self._last_request_at))
+
+    async def _pace(self) -> None:
+        """Sleep until the next GDELT request respects the 1-per-5s rule."""
+        import time as _time
+
+        wait = self._seconds_until_next_request(_time.monotonic())
+        if wait > 0:
+            await asyncio.sleep(wait)
+        self._last_request_at = _time.monotonic()
+
+    async def _get_profile(self, client, params: dict) -> dict:
+        """GET one query profile, honouring HTTP 429 backoff.
+
+        GDELT throttles with 429 (often plain text, not JSON). We wait for
+        ``Retry-After`` when supplied, otherwise exponential backoff from the
+        pacing interval, and retry the profile a bounded number of times
+        instead of failing it immediately or hammering the endpoint.
+        """
+        import time as _time
+
+        interval = max(0.0, float(self.config.gdelt_request_interval_seconds))
+        max_throttle_retries = max(0, int(self.config.gdelt_throttle_max_retries))
+        for throttle_attempt in range(max_throttle_retries + 1):
+            await self._pace()
+            response = await client.get(self.API_URL, params=params)
+            if response.status_code != 429:
+                response.raise_for_status()
+                return response.json()
+            self._last_request_at = _time.monotonic()
+            if throttle_attempt >= max_throttle_retries:
+                response.raise_for_status()  # raises HTTPStatusError (429)
+            wait = _retry_after_seconds(
+                response, interval * (2**throttle_attempt) if interval else 5.0
+            )
+            logger.warning(
+                "[GDELT] throttled (429); backing off %.1fs (retry %s/%s)",
+                wait, throttle_attempt + 1, max_throttle_retries,
+            )
+            if wait > 0:
+                await asyncio.sleep(wait)
+        return {}  # pragma: no cover - loop always returns or raises
 
     async def fetch_raw(self) -> list[dict]:
         max_records = max(1, min(250, self.config.gdelt_max_records))
@@ -208,9 +272,7 @@ class GdeltProvider(SourceProvider):
                     "startdatetime": start.strftime("%Y%m%d%H%M%S"),
                 }
                 try:
-                    response = await client.get(self.API_URL, params=params)
-                    response.raise_for_status()
-                    payload = response.json()
+                    payload = await self._get_profile(client, params)
                 except (httpx.HTTPError, ValueError) as exc:
                     message = f"{profile}: {type(exc).__name__}: {exc}"
                     errors.append(message)

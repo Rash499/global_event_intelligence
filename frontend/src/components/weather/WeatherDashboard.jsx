@@ -363,6 +363,7 @@ export default function WeatherDashboard({ weather, weatherList, miniMap, onBack
                 <li>Each factor is scored 0-100, multiplied by its weight, then summed into the headline score.</li>
                 <li>Now values come from the Open-Meteo sample point for this area; the 7-day outlook defines the forecast peak and the daily shape above.</li>
                 <li>City samples on the mini map are separate Open-Meteo calls for the capital and largest metros, so a capital can read differently from the country sample.</li>
+                <li>Weather data: Open-Meteo (CC BY 4.0, attribution). The free Open-Meteo API is licensed for non-commercial use only; commercial deployments require an Open-Meteo subscription.</li>
               </ul>
             </details>
           </div>

@@ -5,7 +5,7 @@ rebuild, no fabricated intelligence, no new infrastructure.
 
 | Area | Before | After |
 | --- | --- | --- |
-| Backend tests | 0 passing (one file did not compile) | **230 passing** |
+| Backend tests | 0 passing (one file did not compile) | **241 passing** |
 | Migrations | `CREATE TABLE IF NOT EXISTS` + ad-hoc `ALTER` | 6 numbered, reversible-by-backup migrations with version check |
 | Provider health | errors swallowed | per-provider status, retries, circuit breaker, run history |
 | Severity / confidence / priority | one synthetic "importance" | three separate, explainable scores with stored components |
@@ -179,7 +179,7 @@ never run), `degraded` (recovered after retries, partial failure, or stale),
 ## 7. Quality gates
 
 ```
-backend:   python -m pytest -q            → 230 passed
+backend:   python -m pytest -q            → 241 passed
 frontend:  npx tsc -b                     → clean
 frontend:  npx vitest run                 → 104 passed (11 files)
 frontend:  npm run build                  → success
@@ -240,3 +240,37 @@ environment; both root causes were environmental, not application logic:
 3. Add webhook/email alert delivery with a signed payload and retry policy.
 4. Expand the entity gazetteer and add co-occurrence weighting.
 5. Backtest the anomaly baseline against a longer history once enough data exists.
+
+---
+
+## 10. Free-tier audit remediation (2026-11-27)
+
+Implemented from the read-only free-API audit (verdict: PASS WITH CONDITIONS):
+
+1. **ReliefWeb v1 → v2.** Default `RELIEFWEB_BASE_URL` is now
+   `https://api.reliefweb.int/v2`; `appname` is sent URL-only (URL-encoded);
+   config validation rejects v1 URLs and explains the pre-approved appname
+   process (required since 1 Nov 2025, https://apidoc.reliefweb.int/).
+2. **GDELT pacing.** Requests are paced to `GDELT_REQUEST_INTERVAL_SECONDS`
+   (default 5s, per upstream policy) across profiles and collector retries
+   via a monotonic timestamp on the process-wide provider; HTTP 429 honours
+   `Retry-After` else exponential backoff, bounded by
+   `GDELT_THROTTLE_MAX_RETRIES` (default 2).
+3. **Offline-first RAG.** `RAG_EMBEDDING_PROVIDER` defaults to `hashing`;
+   with `ollama` configured but unreachable, `build_embedding_provider`
+   falls back to hashing with a warning (provider model is ledger-recorded).
+4. **Open-Meteo licensing.** `/api/weather/health` and `/global` responses
+   and the Weather dashboard now state: free API is non-commercial only,
+   data CC BY 4.0.
+5. **ACLED unverified.** Providers carry `verification_status`; ACLED is
+   `unverified` and the Providers UI says live operation is not claimed.
+6. **Nominatim removed.** The never-called `GEOCODING_*` settings were
+   deleted (local gazetteer remains); `.env.example` warns that Ollama
+   Cloud / Qdrant Cloud are paid and must not be configured unknowingly.
+7. **README** gained a Cost and licensing table, including "free software
+   is not free hosting" and the deliberate no-Reddit/no-X decision.
+
+Tests: `backend/tests/test_free_tier_remediation.py` (11 tests) covers the
+v2 default/validation/request shape, pacing math, Retry-After parsing, 429
+retry, embedding defaults/fallback, ACLED marking, geocoding removal, and
+the weather licence note. Full suite: 241 passed; frontend 104 passed.

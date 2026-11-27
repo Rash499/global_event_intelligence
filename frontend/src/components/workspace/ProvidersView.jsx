@@ -119,6 +119,7 @@ export default function ProvidersView() {
                 <div><dt>Consecutive failures</dt><dd>{formatNumber(provider.consecutive_failures ?? 0)}</dd></div>
                 {provider.last_error && <div><dt>Last error</dt><dd className="ws-error-text">{provider.last_error}</dd></div>}
                 {provider.requires_credentials && <div><dt>Requires</dt><dd>credentials</dd></div>}
+                {provider.verification_status === "unverified" && <div><dt>Verification</dt><dd>Unverified — never run against a real account; live operation not claimed</dd></div>}
               </dl>
 
               <div className="ws-provider-actions">
@@ -166,8 +167,8 @@ export default function ProvidersView() {
 
       <Panel title="How to add a source" eyebrow="OPERATIONS">
         <ol className="ws-bullets">
-          <li>RSS, GDELT, Google News, USGS, ReliefWeb and WHO are keyless and work with the shipped defaults.</li>
-          <li>NASA FIRMS requires a MAP_KEY; CAP requires feed URLs; ACLED requires a licensed account (never enabled by default).</li>
+          <li>RSS, GDELT, Google News, USGS and WHO are keyless and work with the shipped defaults. ReliefWeb (API v2) additionally needs a pre-approved appname.</li>
+          <li>NASA FIRMS requires a free MAP_KEY; CAP requires feed URLs; ACLED requires a licensed account, is marked unverified (never run against a real account), and is never enabled by default.</li>
           <li>Set the credential in <code>backend/.env</code>, restart the API, then confirm the provider flips from “needs configuration” to “idle”, then “healthy” after the first successful run.</li>
           <li>A provider is only reported as integrated when its health endpoint says so — the docs list the same status.</li>
         </ol>
