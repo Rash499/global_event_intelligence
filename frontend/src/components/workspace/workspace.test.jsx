@@ -13,6 +13,7 @@ vi.mock("../../services/api.jsx", () => ({
 }));
 
 const { default: CommandPalette } = await import("./CommandPalette");
+const { ConfidenceExplanation } = await import("./EventInvestigation.jsx");
 const { default: EventRow } = await import("./EventRow");
 const { Stat, Panel } = await import("./primitives.jsx");
 
@@ -119,5 +120,33 @@ describe("CommandPalette", () => {
       <CommandPalette open={false} onClose={() => {}} onNavigate={() => {}} onOpenEvent={() => {}} onOpenCountry={() => {}} />
     );
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe("ConfidenceExplanation", () => {
+  it("renders the structured explanation object without crashing", () => {
+    render(
+      <ConfidenceExplanation
+        explanation={{
+          summary: "Intelligence confidence is 72% (corroborated by multiple independent publishers)",
+          corroboration_level: "well_corroborated",
+          corroboration_description: "corroborated by multiple independent publishers",
+          independent_publishers: 4,
+          syndicated_publishers: 2,
+          publisher_families: ["Wire A", "Wire B"],
+          duplicate_pairs: [],
+          limitations: ["The incident time is approximate or unknown."],
+          state_reason: "New reports within the last day",
+        }}
+      />
+    );
+    expect(screen.getByText(/Intelligence confidence is 72%/)).toBeInTheDocument();
+    expect(screen.getByText(/4 independent publishers/)).toBeInTheDocument();
+    expect(screen.getByText(/incident time is approximate/)).toBeInTheDocument();
+  });
+
+  it("still renders a plain string explanation", () => {
+    render(<ConfidenceExplanation explanation="Single-source report." />);
+    expect(screen.getByText("Single-source report.")).toBeInTheDocument();
   });
 });

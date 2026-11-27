@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { getProviderHistory, getProviders, runProviderIngestion } from "../../services/api.jsx";
+import { getIngestionStatus, getProviderHistory, getProviders, runProviderIngestion } from "../../services/api.jsx";
 import { formatDateTime, formatRelativeTime } from "../../services/dateFormat.jsx";
 import { formatNumber, humanise } from "../../services/format.jsx";
 import useApiResource from "../../hooks/useApiResource";
@@ -40,16 +40,40 @@ export default function ProvidersView() {
   const [runError, setRunError] = useState("");
   const history = useApiResource(() => getProviderHistory(selected, 40), [selected], { enabled: Boolean(selected) });
 
+  const [runNotice, setRunNotice] = useState("");
+
+  const waitForRunningIngestion = async () => {
+    // A 409 means a run (possibly the scheduler's) is already in progress.
+    // That's a normal state, not an error: wait for it, then refresh.
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      try {
+        const status = await getIngestionStatus();
+        if (!status?.running) return;
+      } catch {
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
+  };
+
   const runOne = async (key) => {
     setRunning(key);
     setRunError("");
     setRunResult(null);
+    setRunNotice("");
     try {
       const result = await runProviderIngestion(key);
       setRunResult({ key, result });
       await providers.reload();
     } catch (caught) {
-      setRunError(caught?.response?.data?.detail || `Running ${key} failed.`);
+      if (caught?.response?.status === 409) {
+        setRunNotice("A collection is already running — waiting for it to finish, then refreshing status.");
+        await waitForRunningIngestion();
+        await providers.reload();
+        setRunNotice("The running collection finished; status refreshed. Use Collect now to run this provider again.");
+      } else {
+        setRunError(caught?.response?.data?.detail || `Running ${key} failed.`);
+      }
     } finally {
       setRunning(null);
     }
@@ -84,6 +108,7 @@ export default function ProvidersView() {
       )}
 
       {runError && <p className="ws-error-text" role="alert">{runError}</p>}
+      {runNotice && <p className="ws-inline-note" role="status">{runNotice}</p>}
       {runResult && (
         <p className="ws-inline-note">
           <strong>{runResult.key}</strong> finished: {formatNumber(runResult.result?.events_created)} events created,{" "}
@@ -127,8 +152,8 @@ export default function ProvidersView() {
                   type="button"
                   className="ws-button"
                   onClick={() => runOne(provider.provider || provider.key)}
-                  disabled={running === (provider.provider || provider.key) || !provider.enabled}
-                  title={!provider.enabled ? "Provider is disabled in configuration" : undefined}
+                  disabled={running !== null || !provider.enabled}
+                  title={!provider.enabled ? "Provider is disabled in configuration" : running !== null ? "A collection is already running" : undefined}
                 >
                   {running === (provider.provider || provider.key) ? "Collecting…" : "Collect now"}
                 </button>
