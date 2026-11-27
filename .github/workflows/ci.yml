@@ -82,18 +82,14 @@ jobs:
       - name: Unit tests
         run: |
           set +e
-          npx vitest run --reporter=verbose > /tmp/vitest.log 2>&1
+          npx vitest run > /tmp/vitest.log 2>&1
           status=$?
-          tail -c 12000 /tmp/vitest.log
+          tail -c 8000 /tmp/vitest.log
           if [ $status -ne 0 ]; then
-            {
-              echo "## vitest failures"
-              echo '```'
-              grep -E "FAIL |AssertionError|Error:|Expected|Received|→" /tmp/vitest.log | head -40
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-            grep -E "FAIL |AssertionError|Error:|Expected|Received" /tmp/vitest.log | head -6 | while IFS= read -r line; do
-              echo "::error title=vitest::$line"
+            # Always annotate with the tail: a config/startup failure has no
+            # "FAIL" line, and an empty annotation hides the cause.
+            tail -c 1200 /tmp/vitest.log | while IFS= read -r line; do
+              [ -n "$line" ] && echo "::error title=vitest::$line"
             done
           fi
           exit $status
