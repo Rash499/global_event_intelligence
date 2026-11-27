@@ -74,17 +74,24 @@ export const getGlobalStatistics = async () => {
   return response.data;
 };
 
-export const runIngestion = async () => {
-  const response = await api.post(
-    "/ingestion/run",
-    {},
-    {
-      timeout: 300000,
-    }
-  );
+// The backend runs one ingestion cycle at a time and answers overlapping
+// POSTs with 409. Share a single in-flight request across all callers
+// (Collect News, per-provider Collect now, double clicks) so the UI never
+// generates that conflict itself.
+let ingestionInFlight = null;
 
-  return response.data;
-};
+function sharedIngestionRequest(url) {
+  if (ingestionInFlight) return ingestionInFlight;
+  ingestionInFlight = api
+    .post(url, {}, { timeout: 300000 })
+    .then((response) => response.data)
+    .finally(() => {
+      ingestionInFlight = null;
+    });
+  return ingestionInFlight;
+}
+
+export const runIngestion = async () => sharedIngestionRequest("/ingestion/run");
 
 export const getGlobalWeather = async (locations) => {
   const response = await api.post(
@@ -328,11 +335,7 @@ export const getSystemStatus = async () => {
   return response.data;
 };
 
-export const runProviderIngestion = async (provider) => {
-  const response = await api.post(
-    `/ingestion/run?providers=${encodeURIComponent(provider)}`,
-    {},
-    { timeout: 300000 }
+export const runProviderIngestion = async (provider) =>
+  sharedIngestionRequest(
+    `/ingestion/run?providers=${encodeURIComponent(provider)}`
   );
-  return response.data;
-};

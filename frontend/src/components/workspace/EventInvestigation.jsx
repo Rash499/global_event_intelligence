@@ -39,6 +39,48 @@ const CONFIDENCE_LABELS = {
   ambiguity_penalty: "Ambiguous reporting (penalty)",
 };
 
+/**
+ * The backend stores `confidence_explanation` as a structured object
+ * ({summary, corroboration_level, independent_publishers, limitations, …}),
+ * not a string. Rendering it directly crashes React ("Objects are not valid
+ * as a React child"), so render each field explicitly. A plain string (older
+ * records) is still accepted.
+ */
+export function ConfidenceExplanation({ explanation }) {
+  if (!explanation) return null;
+  if (typeof explanation === "string") {
+    return <p className="ws-body-text">{explanation}</p>;
+  }
+  const limitations = Array.isArray(explanation.limitations) ? explanation.limitations : [];
+  return (
+    <div className="ws-confidence-explanation">
+      {explanation.summary && <p className="ws-body-text">{explanation.summary}</p>}
+      {explanation.corroboration_description && (
+        <p className="ws-body-text">
+          Corroboration: {explanation.corroboration_description}
+          {explanation.independent_publishers != null &&
+            ` · ${explanation.independent_publishers} independent publisher${explanation.independent_publishers === 1 ? "" : "s"}`}
+          {explanation.syndicated_publishers != null &&
+            ` · ${explanation.syndicated_publishers} syndicated`}
+        </p>
+      )}
+      {explanation.state_reason && (
+        <p className="ws-body-text">Event state: {explanation.state_reason}</p>
+      )}
+      {limitations.length > 0 && (
+        <>
+          <p className="ws-body-text"><strong>Limitations</strong></p>
+          <ul className="ws-bullets">
+            {limitations.map((item, index) => (
+              <li key={index}>{typeof item === "string" ? item : JSON.stringify(item)}</li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
 /** Time precision is a real property of the data and is labelled, not hidden. */
 function timeBlock(event) {
   return [
@@ -169,7 +211,7 @@ export default function EventInvestigation({ eventId, initialEvent, onBack, onSe
           </Explain>
           <Explain summary="Why this confidence">
             <Breakdown components={event.confidence_components} labels={CONFIDENCE_LABELS} max={1} />
-            {event.confidence_explanation && <p className="ws-body-text">{event.confidence_explanation}</p>}
+            <ConfidenceExplanation explanation={event.confidence_explanation} />
             <SourceNote>
               Syndicated copies of the same wire story count once. Confidence grows with independent publishers, not
               with article volume.

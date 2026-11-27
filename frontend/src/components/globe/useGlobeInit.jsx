@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import Globe from "globe.gl";
+import * as THREE from "three";
 
 export function useGlobeInit(containerRef, globeRef) {
   useEffect(() => {
@@ -10,12 +11,14 @@ export function useGlobeInit(containerRef, globeRef) {
       return;
     }
 
+    // No remote earth textures: the previous unpkg globe/bump images made
+    // three.js re-upload immutable textures (WebGL "glTexStorage2D: Texture
+    // is immutable") and added an unvetted CDN dependency at runtime. The
+    // sphere is a plain material; country polygons drawn from the bundled
+    // world.geojson provide the landmasses.
     const globe = Globe()(container)
-      .globeImageUrl(
-        "//unpkg.com/three-globe/example/img/earth-night.jpg"
-      )
-      .bumpImageUrl(
-        "//unpkg.com/three-globe/example/img/earth-topology.png"
+      .globeMaterial(
+        new THREE.MeshPhongMaterial({ color: "#0a2a44", shininess: 8 })
       )
       .backgroundColor("rgba(0,0,0,0)")
       .showAtmosphere(true)
