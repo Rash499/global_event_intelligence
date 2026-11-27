@@ -410,3 +410,27 @@ def test_ingestion_status_reports_lock_state(client):
     assert body["running"] is False
     assert isinstance(body["enabled_providers"], list)
     assert isinstance(body["recent_runs"], list)
+
+
+def test_round_is_null_safe_on_empty_aggregates(client):
+    """Aggregates over empty tables must return null, never a 500.
+
+    SQLite's own ``round(NULL, 2)`` behaviour varies by build; the connection
+    registers a NULL-safe implementation so this is stable everywhere.
+    """
+    for path in ["/api/statistics/overview", "/api/countries?days=30", "/api/dashboard/overview"]:
+        response = client.get(path)
+        assert response.status_code == 200, path
+
+    payload = client.get("/api/statistics/overview").json()
+    assert payload["total_events"] == 0
+    assert payload["categories"] == []
+    assert payload["category_breakdown"] == []
+    assert payload["timeline"] == []
+
+
+def test_country_risk_on_empty_country_returns_null_averages(client):
+    body = client.get("/api/countries/JP/risk").json()
+    assert body["total_events"] == 0
+    assert all(dimension["average_severity"] is None for dimension in body["dimensions"])
+    assert body["coverage"]["level"] == "none"

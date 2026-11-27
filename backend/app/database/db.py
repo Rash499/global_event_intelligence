@@ -37,11 +37,30 @@ def current_db_path() -> Path:
     return settings.db_path
 
 
+def _safe_round(value, digits):
+    """NULL-safe replacement for SQLite's ``round()``.
+
+    ``round(NULL, 2)`` is NULL in SQLite, and SQLite refuses to hand NULL to a
+    user-defined function ("user-defined function raised exception" -> 500).
+    Wrapping the call keeps aggregates over empty/sparse tables returning NULL
+    instead of failing, which is what the API contracts promise.
+    """
+    if value is None:
+        return None
+    try:
+        return round(float(value), int(digits))
+    except (TypeError, ValueError):
+        return None
+
+
 def get_connection(db_path: Path | None = None) -> sqlite3.Connection:
     """Return a configured connection (row factory, busy timeout, WAL)."""
     path = Path(db_path) if db_path else current_db_path()
     conn = sqlite3.connect(path, timeout=BUSY_TIMEOUT_MS / 1000)
     conn.row_factory = sqlite3.Row
+    # Registered on every connection so aggregate rounding stays NULL-safe on
+    # any SQLite build (behaviour differs across versions and distributions).
+    conn.create_function("round", 2, _safe_round, deterministic=True)
     conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
     # Foreign keys are off by default in SQLite and must be enabled per
     # connection.
