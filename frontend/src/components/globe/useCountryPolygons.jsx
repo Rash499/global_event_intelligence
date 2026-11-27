@@ -42,7 +42,7 @@ export function useCountryPolygons({
         getPolygonCapColor(country, events, selectedCountryCode, mode, weather)
       )
       .polygonSideColor(getPolygonSideColor)
-      .polygonStrokeColor(() => "rgba(0, 0, 0, 0)")
+      .polygonStrokeColor(() => "rgba(130, 205, 255, 0.38)")
       .polygonAltitude(0.008)
       .polygonLabel((country) => getPolygonLabel(country, mode, weather))
       .onPolygonClick((country) => {
