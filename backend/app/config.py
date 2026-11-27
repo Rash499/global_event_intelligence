@@ -74,6 +74,12 @@ class Settings(BaseSettings):
     gdelt_max_records: int = 50
     gdelt_languages: str = "english,spanish,french,german,arabic"
     gdelt_time_window_hours: int = 24
+    # GDELT asks clients to send at most one request every 5 seconds and
+    # answers bursts with HTTP 429. The provider paces every request (across
+    # query profiles and collection retries) to this interval and honours
+    # Retry-After / exponential backoff on 429 before giving up on a profile.
+    gdelt_request_interval_seconds: float = 5.0
+    gdelt_throttle_max_retries: int = 2
     rss_max_entries_per_feed: int = 30
     google_news_max_per_query: int = 20
     google_news_language: str = "en-US"
@@ -110,10 +116,12 @@ class Settings(BaseSettings):
     usgs_min_magnitude: float = 2.5
     usgs_max_features: int = 200
 
-    # ReliefWeb requires an ``appname`` for API consumers.
+    # ReliefWeb API v2 (v1 is decommissioned). Since 1 Nov 2025 the
+    # ``appname`` must be pre-approved by ReliefWeb via their request form:
+    # https://apidoc.reliefweb.int/ - an unapproved appname gets HTTP 403.
     reliefweb_enabled: bool = False
     reliefweb_appname: str = ""
-    reliefweb_base_url: str = "https://api.reliefweb.int/v1"
+    reliefweb_base_url: str = "https://api.reliefweb.int/v2"
     reliefweb_max_records: int = 50
 
     # WHO Disease Outbreak News (public RSS, no key).
@@ -166,12 +174,13 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
     # Geolocation
     # ------------------------------------------------------------------
-    # Optional geocoding provider ("nominatim" or "" to disable).
-    geocoding_provider: str = ""
-    geocoding_base_url: str = "https://nominatim.openstreetmap.org"
-    geocoding_user_agent: str = "GlobalEventIntelligence/1.0 (intelligence platform)"
-    geocoding_max_requests_per_cycle: int = 5
-    geocoding_timeout_seconds: float = 6.0
+    # Geolocation is intentionally local-gazetteer based only (see
+    # intelligence/geolocation.py): no external geocoding service is called.
+    # The previous GEOCODING_* (Nominatim) settings were removed because no
+    # code ever called that endpoint, and the public Nominatim instance's
+    # usage policy prohibits bulk/heavy automated geocoding. The
+    # ``geocoding_source``/``geocoding_confidence`` event columns remain and
+    # record the local extraction source.
 
     # ------------------------------------------------------------------
     # Security
@@ -195,7 +204,11 @@ class Settings(BaseSettings):
     ollama_max_tokens: int = 512
     ollama_temperature: float = 0.1
 
-    rag_embedding_provider: str = "ollama"
+    # Default is the offline hashing embedder so a fresh clone works with no
+    # Ollama install and no cost. Set to "ollama" only with a local Ollama;
+    # if Ollama is configured but unreachable, embedding falls back to
+    # hashing automatically (see rag/embeddings.py).
+    rag_embedding_provider: str = "hashing"
     rag_embedding_dimensions: int = 768
     rag_embedding_batch_size: int = 16
 

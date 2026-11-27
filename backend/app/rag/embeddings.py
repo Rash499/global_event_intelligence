@@ -228,9 +228,14 @@ class OllamaEmbeddingProvider:
 
 
 def build_embedding_provider(config: Settings | None = None) -> EmbeddingProvider:
-    """Create the configured embedding provider."""
+    """Create the configured embedding provider.
+
+    With ``ollama`` configured but unreachable, falls back to the offline
+    hashing embedder instead of raising: basic retrieval must keep working
+    on a free install with no local model server.
+    """
     config = config or global_settings
-    provider = (config.rag_embedding_provider or "ollama").strip().lower()
+    provider = (config.rag_embedding_provider or "hashing").strip().lower()
 
     if provider in {"hashing", "hash", "offline"}:
         return HashingEmbeddingProvider(config.rag_embedding_dimensions)
@@ -240,6 +245,16 @@ def build_embedding_provider(config: Settings | None = None) -> EmbeddingProvide
             f"Unsupported RAG_EMBEDDING_PROVIDER '{provider}' "
             "(expected 'ollama' or 'hashing')"
         )
+
+    if not tcp_reachable(config.ollama_root, timeout=0.2):
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "[RAG] Ollama embedding server unreachable at %s; "
+            "falling back to offline hashing embeddings",
+            config.ollama_root,
+        )
+        return HashingEmbeddingProvider(config.rag_embedding_dimensions)
 
     return OllamaEmbeddingProvider(
         base_url=config.ollama_root,

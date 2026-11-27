@@ -120,6 +120,10 @@ class ProviderHealth:
     notes: str | None = None
     docs_url: str | None = None
     requires_credentials: bool = False
+    # "verified" = exercised/tested as documented; "unverified" = implemented
+    # against published docs but never run against a real account, so live
+    # operation must not be claimed.
+    verification_status: str = "verified"
 
     def as_dict(self) -> dict:
         return self.__dict__.copy()
@@ -137,6 +141,7 @@ class SourceProvider:
     provider_type: str = "news"
     docs_url: str | None = None
     requires_credentials: bool = False
+    verification_status: str = "verified"
     # Structured providers (USGS, CAP…) produce events directly rather than
     # news articles; the ingestion service branches on this flag.
     produces_structured_observations: bool = False
@@ -340,4 +345,5 @@ class SourceProvider:
             notes=note,
             docs_url=self.docs_url,
             requires_credentials=self.requires_credentials,
+            verification_status=self.verification_status,
         )

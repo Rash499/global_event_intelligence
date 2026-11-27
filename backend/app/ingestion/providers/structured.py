@@ -18,6 +18,7 @@ import asyncio
 import logging
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
+from urllib.parse import quote
 
 from ..http import async_client, bounded_text
 from ..normalize import clean_text, parse_timestamp, to_utc_iso
@@ -192,15 +193,23 @@ class ReliefWebProvider(SourceProvider):
         if not self.config.reliefweb_appname.strip():
             return (
                 False,
-                "ReliefWeb requires an `appname` parameter identifying your "
-                "application. Set RELIEFWEB_APPNAME to enable this provider.",
+                "ReliefWeb API v2 requires a pre-approved `appname`. Request "
+                "one via the form at https://apidoc.reliefweb.int/ (approval "
+                "required since 1 Nov 2025; unapproved names get HTTP 403), "
+                "then set RELIEFWEB_APPNAME.",
+            )
+        if "/v2" not in self.config.reliefweb_base_url:
+            return (
+                False,
+                "RELIEFWEB_BASE_URL must point at the v2 API "
+                "(https://api.reliefweb.int/v2); v1 is decommissioned.",
             )
         return True, None
 
     async def fetch_raw(self) -> list[dict]:
         limit = max(1, min(100, self.config.reliefweb_max_records))
+        # v2: `appname` is sent in the URL only (GET and POST), not the body.
         payload = {
-            "appname": self.config.reliefweb_appname,
             "limit": limit,
             "preset": "latest",
             "fields": {
@@ -214,7 +223,8 @@ class ReliefWebProvider(SourceProvider):
         }
         async with async_client() as client:
             response = await client.post(
-                f"{self.config.reliefweb_base_url}/reports?appname={self.config.reliefweb_appname}",
+                f"{self.config.reliefweb_base_url.rstrip('/')}/reports"
+                f"?appname={quote(self.config.reliefweb_appname, safe='')}",
                 json=payload,
             )
             response.raise_for_status()
@@ -675,6 +685,10 @@ class AcledProvider(SourceProvider):
     provider_type = "conflict"
     docs_url = "https://acleddata.com/"
     requires_credentials = True
+    # Implemented against ACLED's published API shape but never exercised
+    # against a real myACLED account (access is licence/tier controlled).
+    # Live operation is therefore unverified and must not be claimed.
+    verification_status = "unverified"
     produces_structured_observations = True
     default_interval_seconds = 3600
 
