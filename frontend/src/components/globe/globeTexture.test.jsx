@@ -26,6 +26,9 @@ describe("country polygon borders", () => {
     expect(countryPolygonsSource).toContain("polygonsTransitionDuration(0)");
     // Geometry is set in exactly one effect; colours are accessor-only updates.
     expect(countryPolygonsSource.match(/polygonsData\(countries\)/g)).toHaveLength(1);
-    expect(countryPolygonsSource).toContain("polygonAltitude(0.015)");
+    expect(countryPolygonsSource).toContain("polygonAltitude(0.008)");
+    // Stroke lines are coplanar line geometry and z-fight on rotation;
+    // borders must come from caps/sides, never a stroke colour.
+    expect(countryPolygonsSource).toContain('polygonStrokeColor(() => "rgba(0, 0, 0, 0)")');
   });
 });

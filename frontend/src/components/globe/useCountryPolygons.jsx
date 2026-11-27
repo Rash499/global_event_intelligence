@@ -45,14 +45,18 @@ export function useCountryPolygons({
     if (!globe || !countries.length) return;
 
     globe
-      .polygonsData(countries)
       // No altitude animation when data (re)sets: borders must be static.
+      // Set this *before* polygonsData so even the first load never animates.
       .polygonsTransitionDuration(0)
+      .polygonsData(countries)
       .polygonSideColor(getPolygonSideColor)
-      .polygonStrokeColor(() => "rgba(130, 205, 255, 0.38)")
-      // Slightly higher cap separates borders from the sphere texture and
-      // stops depth-fighting shimmer while rotating.
-      .polygonAltitude(0.015);
+      // No stroke lines: three-globe draws strokes as 1px line geometry at
+      // exactly cap altitude, coplanar with the cap surface. On a rotating
+      // globe they z-fight and alias - the visible "glitching borders".
+      // Country separation comes from the translucent caps + side walls
+      // over the night texture (the original, stable configuration).
+      .polygonStrokeColor(() => "rgba(0, 0, 0, 0)")
+      .polygonAltitude(0.008);
   }, [countries, globeRef]);
 
   // Colours, labels and clicks are accessors: updating them re-styles the
