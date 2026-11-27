@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import globeInitSource from "./useGlobeInit.jsx?raw";
+import countryPolygonsSource from "./useCountryPolygons.jsx?raw";
 
 /**
  * Guards the attractive-globe setup: the night-earth texture must stay
@@ -17,5 +18,14 @@ describe("globe texture", () => {
   it("never references remote texture CDNs", () => {
     expect(globeInitSource).not.toContain("unpkg.com");
     expect(globeInitSource).not.toMatch(/globeImageUrl|bumpImageUrl/);
+  });
+});
+
+describe("country polygon borders", () => {
+  it("sets polygon geometry once with transitions disabled (no border glitch)", () => {
+    expect(countryPolygonsSource).toContain("polygonsTransitionDuration(0)");
+    // Geometry is set in exactly one effect; colours are accessor-only updates.
+    expect(countryPolygonsSource.match(/polygonsData\(countries\)/g)).toHaveLength(1);
+    expect(countryPolygonsSource).toContain("polygonAltitude(0.015)");
   });
 });
