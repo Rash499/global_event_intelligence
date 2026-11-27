@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 
 from ..config import settings
 from ..database.db import get_connection, write_connection
-from ..intelligence.taxonomy import TAXONOMY_VERSION, taxonomy_payload
+from ..intelligence.taxonomy import TAXONOMY, TAXONOMY_VERSION, taxonomy_payload
 from ..intelligence.geolocation import COUNTRY_BY_CODE, coordinate_for_country
 from .auth import get_optional_user
 
@@ -946,6 +946,10 @@ MAJOR_DEFINITION = (
 def map_events(
     days: int = Query(7, ge=1, le=90),
     category: str | None = None,
+    categories: str | None = Query(
+        None,
+        description="Comma-separated taxonomy categories (map layer filter).",
+    ),
     country_code: str | None = None,
     min_severity: float | None = Query(None, ge=0, le=10),
     major_only: bool = Query(False),
@@ -969,6 +973,25 @@ def map_events(
     if category:
         conditions.append("e.category = ?")
         params.append(category)
+    selected_categories: list[str] = []
+    if categories is not None:
+        selected_categories = [
+            part.strip() for part in categories.split(",") if part.strip()
+        ]
+        unknown = [key for key in selected_categories if key not in TAXONOMY]
+        if unknown:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Unknown categories: {', '.join(sorted(set(unknown)))}",
+            )
+        if selected_categories:
+            placeholders = ", ".join("?" for _ in selected_categories)
+            conditions.append(f"e.category IN ({placeholders})")
+            params.extend(selected_categories)
+        elif categories is not None:
+            # The parameter was supplied but names no layer (every layer
+            # toggled off): an explicit empty selection, not "no filter".
+            conditions.append("1 = 0")
     if country_code:
         conditions.append("e.country_code = ?")
         params.append(country_code.upper())
@@ -1060,6 +1083,57 @@ def map_events(
             row["latitude"] = anchor[0] if anchor else None
             row["longitude"] = anchor[1] if anchor else None
             row["is_country_aggregate"] = True
+
+        # Per-category freshness for the map's layer panel. Computed over the
+        # same window/scope but *without* the category and precision filters,
+        # so a layer the user turned off still reports how fresh its data is
+        # instead of pretending to be empty. Counts are stored events only.
+        fresh_conditions = [
+            "julianday(COALESCE(e.occurred_at, e.event_time, e.created_at)) >= julianday(?)",
+        ]
+        fresh_params: list = [since]
+        if country_code:
+            fresh_conditions.append("e.country_code = ?")
+            fresh_params.append(country_code.upper())
+        if min_severity is not None:
+            fresh_conditions.append("e.severity >= ?")
+            fresh_params.append(min_severity)
+        if major_only:
+            fresh_conditions.append(
+                "(COALESCE(e.severity, 0) >= ? OR COALESCE(e.importance, 0) >= ?)"
+            )
+            fresh_params.extend([MAJOR_SEVERITY_THRESHOLD, MAJOR_IMPORTANCE_THRESHOLD])
+        fresh_where = " AND ".join(fresh_conditions)
+        category_freshness = [
+            dict(row)
+            for row in conn.execute(
+                f"""
+                SELECT e.category AS category, COUNT(*) AS events,
+                       MAX(e.severity) AS max_severity,
+                       MAX(COALESCE(e.last_seen_at, e.updated_at, e.occurred_at,
+                                    e.event_time, e.created_at)) AS latest_event_at
+                FROM events e
+                WHERE {fresh_where} AND e.category IS NOT NULL
+                GROUP BY e.category
+                """,
+                fresh_params,
+            ).fetchall()
+        ]
+        latest_event_at = conn.execute(
+            f"""
+            SELECT MAX(COALESCE(e.last_seen_at, e.updated_at, e.occurred_at,
+                                e.event_time, e.created_at))
+            FROM events e WHERE {fresh_where}
+            """,
+            fresh_params,
+        ).fetchone()[0]
+        try:
+            latest_ingestion_at = conn.execute(
+                "SELECT MAX(finished_at) FROM collection_runs "
+                "WHERE status IN ('healthy','degraded')"
+            ).fetchone()[0]
+        except Exception:  # noqa: BLE001 - freshness is advisory, never fatal
+            latest_ingestion_at = None
     finally:
         conn.close()
 
@@ -1069,8 +1143,18 @@ def map_events(
         "major_only": major_only,
         "major_definition": MAJOR_DEFINITION if major_only else None,
         "precision_mode": precision,
+        "categories": selected_categories,
         "items": rows,
         "country_shading": country_rows,
+        "freshness": {
+            "latest_event_at": latest_event_at,
+            "latest_ingestion_at": latest_ingestion_at,
+            "category_freshness": category_freshness,
+            "note": (
+                "Freshness describes stored data in this window only; a quiet "
+                "layer means little was collected, not that nothing happened."
+            ),
+        },
         "coverage": {
             "returned": len(rows),
             "plotted_with_coordinates": plotted,

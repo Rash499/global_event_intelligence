@@ -601,6 +601,21 @@
 .ws-legend li { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); }
 .ws-legend i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 
+.ws-layer-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ws-layer-list li { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); font-size: 12px; }
+.ws-layer-list button {
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: transparent;
+  color: var(--muted);
+  border-radius: var(--radius-pill, 999px);
+  padding: 4px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  text-align: left;
+}
+.ws-layer-list button.is-active { background: rgba(66, 201, 255, 0.16); color: var(--cyan-soft, #7bdcff); }
+.ws-layer-toggle { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); margin-top: 10px; cursor: pointer; }
+
 .ws-breakdown li { display: flex; flex-direction: column; gap: 3px; font-size: 11px; }
 .ws-breakdown li > span { color: var(--muted); text-transform: capitalize; }
 

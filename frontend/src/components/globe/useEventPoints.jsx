@@ -14,10 +14,16 @@ export function useEventPoints({ globeRef, events, enabled, onSelectEvent }) {
       .pointLat("latitude")
       .pointLng("longitude")
       .pointAltitude((event) =>
-        event.is_country_aggregate ? 0.012 : 0.035 + Math.min(0.045, event.importance * 0.006)
+        event.is_country_aggregate || event.is_cluster
+          ? 0.012
+          : 0.035 + Math.min(0.045, event.importance * 0.006)
       )
       .pointRadius((event) =>
-        event.is_country_aggregate ? 0.55 : 0.24 + Math.min(0.22, event.importance * 0.025)
+        event.is_cluster
+          ? 0.8
+          : event.is_country_aggregate
+            ? 0.55
+            : 0.24 + Math.min(0.22, event.importance * 0.025)
       )
       .pointResolution(20)
       .pointColor(getPointColor)

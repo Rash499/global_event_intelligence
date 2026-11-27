@@ -464,6 +464,29 @@ def test_map_layer_rejects_unknown_precision(client, seeded):
     assert client.get("/api/map/events?precision=guessed").status_code == 422
 
 
+def test_map_layer_categories_filter_and_freshness(client, seeded):
+    """Map layers filter by taxonomy categories, and freshness is reported
+    for every category in the window - including filtered-out layers, so a
+    switched-off layer still shows how fresh its stored data is."""
+    body = client.get("/api/map/events?days=7&categories=natural_disaster").json()
+    assert {item["category"] for item in body["items"]} == {"natural_disaster"}
+    assert body["categories"] == ["natural_disaster"]
+
+    fresh = {row["category"]: row for row in body["freshness"]["category_freshness"]}
+    assert fresh["natural_disaster"]["events"] == 2
+    assert fresh["protest_unrest"]["events"] == 1
+    assert fresh["natural_disaster"]["latest_event_at"]
+    assert body["freshness"]["latest_event_at"]
+    assert "latest_ingestion_at" in body["freshness"]
+
+    # Unknown categories are rejected, never silently ignored.
+    assert client.get("/api/map/events?categories=not_a_category").status_code == 422
+    # An explicitly empty layer selection means "no layers", not "no filter".
+    empty = client.get("/api/map/events?days=7&categories=").json()
+    assert empty["items"] == []
+    assert empty["country_shading"] == []
+
+
 def test_ingestion_status_reports_lock_state(client):
     body = client.get("/api/ingestion/status").json()
     assert body["running"] is False
