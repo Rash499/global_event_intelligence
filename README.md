@@ -457,7 +457,11 @@ page. The navigation groups reflect the workflow:
 - **Overview** — live counts straight from `/api/dashboard/overview`: active
   events, 24h volume, severity mix, top countries, source mix, priority queue,
   coverage block and current anomalies. Every tile is a stored count; an empty
-  database renders empty states, never placeholder figures.
+  database renders empty states, never placeholder figures. A **Convergence**
+  panel (`/api/convergence`) lists countries where at least three category
+  groups escalated in the same 7-day window (rising stored volume or a
+  critical-severity event), each with per-group counts and clickable evidence
+  events — convergence in collected reporting, not a risk score.
 - **Map** — fed by `/api/map/events`. Pins are drawn **only** for events whose
   `location_precision` supports a point (`exact`, `city`, `locality`, `region`).
   Events known only at country level are listed and shaded per country. The

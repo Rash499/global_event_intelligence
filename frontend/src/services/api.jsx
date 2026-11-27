@@ -255,6 +255,11 @@ export const getCountriesSummary = async (days = 30) => {
   return response.data;
 };
 
+export const getConvergence = async (params = {}) => {
+  const response = await api.get("/convergence", { params });
+  return response.data;
+};
+
 export const getAnomalies = async (includeDismissed = false) => {
   const response = await api.get("/anomalies", { params: { include_dismissed: includeDismissed } });
   return response.data;

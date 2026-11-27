@@ -649,6 +649,190 @@ def countries_summary(days: int = Query(30, ge=1, le=365)):
 
 
 # ----------------------------------------------------------------------
+# Convergence (multi-category escalation per country)
+# ----------------------------------------------------------------------
+# Category groups mirror the frontend map layer registry
+# (frontend/src/components/globe/mapLayers.jsx). The taxonomy categories are
+# the shared vocabulary; if a category is ever added to the taxonomy it must
+# be added to a group here and a layer there.
+CONVERGENCE_GROUPS = {
+    "conflict_security": ("Conflict & security", ("armed_conflict", "terrorism_extremism")),
+    "politics_unrest": (
+        "Politics & unrest",
+        ("political_development", "protest_unrest", "international_relations"),
+    ),
+    "natural_weather": ("Natural & weather", ("natural_disaster", "severe_weather", "environmental")),
+    "health_humanitarian": ("Health & humanitarian", ("public_health", "humanitarian")),
+    "economy_infrastructure": (
+        "Economy & infrastructure",
+        ("economic_financial", "energy_infrastructure", "transportation"),
+    ),
+    "cyber_safety": ("Cyber & public safety", ("cyber_technology", "crime_public_safety")),
+    "other": ("Other / unclassified", ("other",)),
+}
+CONVERGENCE_CATEGORY_GROUP = {
+    category: group_key
+    for group_key, (_label, categories) in CONVERGENCE_GROUPS.items()
+    for category in categories
+}
+
+CONVERGENCE_DEFINITION = (
+    "A category group counts as escalating for a country when, in the current "
+    "window, either (a) it has at least 2 stored events and more than in the "
+    "preceding equal window, or (b) it contains a critical event (severity "
+    ">= 8.5). A country is listed when at least {min_groups} distinct groups "
+    "are escalating. This measures convergence in collected reporting, which "
+    "can reflect collection volume as well as conditions on the ground."
+)
+
+
+@router.get("/convergence")
+def convergence(
+    window_days: int = Query(7, ge=1, le=30),
+    min_groups: int = Query(3, ge=2, le=7),
+    limit: int = Query(10, ge=1, le=50),
+):
+    """Countries where several category groups escalated in the same window.
+
+    Deterministic counting over stored events only; every listed country
+    carries the per-group counts and the highest-severity evidence events so
+    the claim can be inspected rather than trusted.
+    """
+    now = datetime.now(timezone.utc)
+    current_start = _iso(now - timedelta(days=window_days))
+    previous_start = _iso(now - timedelta(days=window_days * 2))
+    ts = "COALESCE(e.occurred_at, e.event_time, e.created_at)"
+
+    conn = get_connection()
+    try:
+        stats = [
+            dict(row)
+            for row in conn.execute(
+                f"""
+                SELECT e.country_code, e.country, e.category,
+                       SUM(CASE WHEN julianday({ts}) >= julianday(?) THEN 1 ELSE 0 END) AS current_events,
+                       SUM(CASE WHEN julianday({ts}) < julianday(?) THEN 1 ELSE 0 END) AS previous_events,
+                       MAX(CASE WHEN julianday({ts}) >= julianday(?) THEN e.severity END) AS max_severity
+                FROM events e
+                WHERE e.country_code IS NOT NULL AND e.category IS NOT NULL
+                  AND julianday({ts}) >= julianday(?)
+                GROUP BY e.country_code, e.category
+                """,
+                (current_start, current_start, current_start, previous_start),
+            ).fetchall()
+        ]
+
+        per_country: dict[str, dict] = {}
+        for row in stats:
+            group_key = CONVERGENCE_CATEGORY_GROUP.get(row["category"], "other")
+            country = per_country.setdefault(
+                row["country_code"],
+                {
+                    "country_code": row["country_code"],
+                    "country": row["country"],
+                    "groups": {},
+                    "total_current": 0,
+                    "total_previous": 0,
+                    "max_severity": None,
+                },
+            )
+            group = country["groups"].setdefault(
+                group_key,
+                {
+                    "group": group_key,
+                    "label": CONVERGENCE_GROUPS[group_key][0],
+                    "current": 0,
+                    "previous": 0,
+                    "max_severity": None,
+                },
+            )
+            group["current"] += row["current_events"] or 0
+            group["previous"] += row["previous_events"] or 0
+            country["total_current"] += row["current_events"] or 0
+            country["total_previous"] += row["previous_events"] or 0
+            for holder in (group, country):
+                if row["max_severity"] is not None:
+                    holder["max_severity"] = (
+                        row["max_severity"]
+                        if holder["max_severity"] is None
+                        else max(holder["max_severity"], row["max_severity"])
+                    )
+
+        qualifying = []
+        for country in per_country.values():
+            escalated = []
+            for group in country["groups"].values():
+                reasons = []
+                if group["current"] >= 2 and group["current"] > group["previous"]:
+                    reasons.append("volume_increase")
+                if group["current"] >= 1 and (group["max_severity"] or 0) >= 8.5:
+                    reasons.append("critical_severity")
+                group["escalated"] = bool(reasons)
+                group["reasons"] = reasons
+                group["evidence"] = []
+                if reasons:
+                    escalated.append(group)
+            if len(escalated) >= min_groups:
+                country["escalated_groups"] = len(escalated)
+                country["groups"] = sorted(
+                    country["groups"].values(),
+                    key=lambda g: (not g["escalated"], -(g["max_severity"] or 0), -g["current"]),
+                )
+                qualifying.append(country)
+
+        qualifying.sort(
+            key=lambda c: (-c["escalated_groups"], -c["total_current"], -(c["max_severity"] or 0))
+        )
+        qualifying = qualifying[:limit]
+
+        if qualifying:
+            codes = [country["country_code"] for country in qualifying]
+            placeholders = ", ".join("?" for _ in codes)
+            evidence_rows = [
+                dict(row)
+                for row in conn.execute(
+                    f"""
+                    SELECT e.id, e.title, e.category, e.country_code, e.severity,
+                           {ts} AS occurred_at
+                    FROM events e
+                    WHERE e.country_code IN ({placeholders})
+                      AND julianday({ts}) >= julianday(?)
+                    ORDER BY COALESCE(e.severity, 0) DESC, e.id DESC
+                    """,
+                    (*codes, current_start),
+                ).fetchall()
+            ]
+            by_key: dict[tuple[str, str], list] = {}
+            for row in evidence_rows:
+                key = (row["country_code"], CONVERGENCE_CATEGORY_GROUP.get(row["category"], "other"))
+                bucket = by_key.setdefault(key, [])
+                if len(bucket) < 3:
+                    bucket.append(
+                        {
+                            "id": row["id"],
+                            "title": row["title"],
+                            "category": row["category"],
+                            "severity": row["severity"],
+                            "occurred_at": row["occurred_at"],
+                        }
+                    )
+            for country in qualifying:
+                for group in country["groups"]:
+                    group["evidence"] = by_key.get((country["country_code"], group["group"]), [])
+    finally:
+        conn.close()
+
+    return {
+        "generated_at": _iso(now),
+        "window_days": window_days,
+        "min_groups": min_groups,
+        "definition": CONVERGENCE_DEFINITION.format(min_groups=min_groups),
+        "items": qualifying,
+        "count": len(qualifying),
+    }
+
+
+# ----------------------------------------------------------------------
 # Anomalies
 # ----------------------------------------------------------------------
 @router.get("/anomalies")

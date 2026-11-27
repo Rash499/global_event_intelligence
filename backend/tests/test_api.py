@@ -200,6 +200,64 @@ def test_countries_summary_reports_fixed_window_trend(client, seeded):
     assert rows["LK"]["trend"]["events_24h"] == 1
 
 
+def test_convergence_requires_multiple_escalating_groups(client, conn):
+    """Convergence = several category groups escalating in the same country
+    and window, with per-group counts and evidence events attached."""
+
+    def insert(title, category, code, severity, hours_ago):
+        conn.execute(
+            """
+            INSERT INTO events (
+                title, summary, category, country, country_code, severity,
+                importance, occurred_at, event_time, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (title, title, category, code, code, severity, severity,
+             _iso(hours_ago), _iso(hours_ago), _iso(hours_ago)),
+        )
+
+    # Japan: three groups escalating by volume (current > previous, >= 2).
+    insert("Clash A", "armed_conflict", "JP", 7.0, 5)
+    insert("Clash B", "armed_conflict", "JP", 6.0, 6)
+    insert("Clash old", "armed_conflict", "JP", 6.0, 24 * 8)
+    insert("Protest A", "protest_unrest", "JP", 5.0, 4)
+    insert("Protest B", "protest_unrest", "JP", 5.5, 3)
+    insert("Quake A", "natural_disaster", "JP", 7.5, 2)
+    insert("Quake B", "natural_disaster", "JP", 6.5, 1)
+    # Sri Lanka: only one group present - must not qualify.
+    insert("Flood A", "natural_disaster", "LK", 6.0, 2)
+    insert("Flood B", "natural_disaster", "LK", 6.0, 3)
+
+    body = client.get("/api/convergence").json()
+    assert body["min_groups"] == 3
+    assert "preceding equal window" in body["definition"]
+    countries = {item["country_code"]: item for item in body["items"]}
+    assert set(countries) == {"JP"}
+
+    japan = countries["JP"]
+    assert japan["escalated_groups"] == 3
+    groups = {group["group"]: group for group in japan["groups"]}
+    assert groups["conflict_security"]["current"] == 2
+    assert groups["conflict_security"]["previous"] == 1
+    assert groups["conflict_security"]["reasons"] == ["volume_increase"]
+    assert groups["natural_weather"]["evidence"]
+    assert groups["natural_weather"]["evidence"][0]["title"] == "Quake A"
+
+    # A single critical event can make a group escalate on severity alone.
+    insert("Massive quake", "natural_disaster", "LK", 9.4, 1)
+    insert("Outbreak A", "public_health", "LK", 5.0, 2)
+    insert("Outbreak B", "public_health", "LK", 5.0, 3)
+    insert("Riot A", "protest_unrest", "LK", 5.0, 2)
+    insert("Riot B", "protest_unrest", "LK", 5.0, 4)
+    body = client.get("/api/convergence").json()
+    countries = {item["country_code"]: item for item in body["items"]}
+    assert "LK" in countries
+    lk_groups = {group["group"]: group for group in countries["LK"]["groups"]}
+    # Both routes fire here (3 current vs 0 previous, plus a critical event);
+    # the critical-severity route must be among the stated reasons.
+    assert "critical_severity" in lk_groups["natural_weather"]["reasons"]
+
+
 def test_country_without_reporting_is_not_described_as_safe(client, seeded):
     body = client.get("/api/countries/NO/risk").json()
     assert body["coverage"]["level"] == "none"

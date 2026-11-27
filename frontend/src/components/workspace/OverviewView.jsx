@@ -1,10 +1,10 @@
 import { useCallback } from "react";
 
-import { getAnomalies, getDashboardOverview } from "../../services/api.jsx";
+import { getAnomalies, getConvergence, getDashboardOverview } from "../../services/api.jsx";
 import { formatRelativeTime } from "../../services/dateFormat.jsx";
 import { formatCount, formatNumber, severityColour } from "../../services/format.jsx";
 import useApiResource from "../../hooks/useApiResource";
-import { Badge, ErrorState, Empty, Loading, Meter, Panel, Stat, UpdatedAt } from "./primitives.jsx";
+import { Badge, ErrorState, Empty, Loading, Meter, Panel, SourceNote, Stat, UpdatedAt } from "./primitives.jsx";
 import EventRow from "./EventRow.jsx";
 
 const STATE_TONES = { new: "info", developing: "warn", escalating: "danger", stable: "ok" };
@@ -12,6 +12,7 @@ const STATE_TONES = { new: "info", developing: "warn", escalating: "danger", sta
 export default function OverviewView({ onSelectEvent, onNavigate, refreshMs = 60000 }) {
   const overview = useApiResource(() => getDashboardOverview(24), [], { pollMs: refreshMs });
   const anomalies = useApiResource(() => getAnomalies(), [], { pollMs: refreshMs * 2 });
+  const convergence = useApiResource(() => getConvergence(), [], { pollMs: refreshMs * 2 });
 
   const data = overview.data;
   const totals = data?.totals || {};
@@ -117,6 +118,74 @@ export default function OverviewView({ onSelectEvent, onNavigate, refreshMs = 60
           )}
         </Panel>
       </div>
+
+      <Panel title="Convergence" eyebrow="MULTI-CATEGORY ESCALATION BY COUNTRY">
+        {convergence.error ? (
+          <p className="ws-error-text">Convergence analysis failed to load.</p>
+        ) : (convergence.data?.items || []).length === 0 ? (
+          <Empty title="No converging escalations in the last 7 days">
+            No country currently has {convergence.data?.min_groups ?? 3} or more category groups escalating
+            at once (rising stored volume, or a critical-severity event). That describes collected
+            reporting — with thin coverage, real convergence can go unseen.
+          </Empty>
+        ) : (
+          <>
+            <ul className="ws-convergence-list">
+              {convergence.data.items.map((country) => (
+                <li key={country.country_code} className="ws-convergence-item">
+                  <div className="ws-convergence-head">
+                    <button
+                      type="button"
+                      className="ws-link"
+                      onClick={() => onNavigate?.("countries", { country: country.country_code })}
+                    >
+                      {country.country || country.country_code}
+                    </button>
+                    <Badge tone="warn">
+                      {formatCount(country.escalated_groups, "group")} escalating
+                    </Badge>
+                    <span className="ws-muted">
+                      {formatCount(country.total_current, "event")} in window vs{" "}
+                      {formatCount(country.total_previous, "event")} before
+                    </span>
+                  </div>
+                  <ul className="ws-chip-row ws-signal-chips">
+                    {country.groups
+                      .filter((group) => group.escalated)
+                      .map((group) => (
+                        <li key={group.group} className="ws-signal-chip">
+                          <i style={{ background: severityColour(group.max_severity) }} aria-hidden="true" />
+                          {group.label} · {formatNumber(group.current)} vs {formatNumber(group.previous)} · max{" "}
+                          {group.max_severity == null ? "not assessed" : formatNumber(group.max_severity, 1)}
+                        </li>
+                      ))}
+                  </ul>
+                  <ul className="ws-compact-list">
+                    {country.groups
+                      .filter((group) => group.escalated)
+                      .flatMap((group) =>
+                        (group.evidence || []).slice(0, 2).map((event) => ({ ...event, groupLabel: group.label }))
+                      )
+                      .slice(0, 4)
+                      .map((event) => (
+                        <li key={event.id}>
+                          <button type="button" className="ws-link" onClick={() => handleSelect(event)}>
+                            {event.title}
+                          </button>
+                          <span className="ws-muted">
+                            {event.groupLabel}
+                            {event.severity != null ? ` · severity ${formatNumber(event.severity, 1)}` : ""}
+                          </span>
+                        </li>
+                      ))}
+                  </ul>
+                </li>
+              ))}
+            </ul>
+            <SourceNote>{convergence.data?.definition}</SourceNote>
+          </>
+        )}
+      </Panel>
 
       <div className="ws-grid-2 ws-grid-wide-left">
         <Panel
