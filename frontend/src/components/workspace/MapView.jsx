@@ -69,11 +69,32 @@ export default function MapView({
 
   const items = layer.data?.items || [];
 
+  // If the major scope matches nothing in the window, an empty globe helps
+  // nobody. Fall back to all events in the same window and say so plainly
+  // (fallbackActive drives the banner + coverage labels below).
+  const majorEmpty =
+    scope === "major" && !layer.loading && !layer.error && items.length === 0;
+  const fallbackLayer = useApiResource(
+    () =>
+      getMapEvents({
+        days,
+        precision,
+        limit: 500,
+        ...(category ? { category } : {}),
+        ...(minSeverity !== "" ? { min_severity: Number(minSeverity) } : {}),
+      }),
+    [days, precision, category, minSeverity],
+    { enabled: majorEmpty }
+  );
+  const fallbackActive = majorEmpty && (fallbackLayer.data?.items || []).length > 0;
+  const displayItems = fallbackActive ? fallbackLayer.data.items : items;
+  const displayData = fallbackActive ? fallbackLayer.data : layer.data;
+
   // This is the honesty rule: a pin requires coordinates *and* a precision that
   // supports a point. Country-level rows are never given a synthetic position.
   const plottable = useMemo(
     () =>
-      items
+      displayItems
         .filter(
           (event) =>
             event.latitude !== null &&
@@ -81,19 +102,30 @@ export default function MapView({
             ["exact", "city", "locality", "region"].includes(event.location_precision)
         )
         .map((event) => ({ ...event, importance: event.severity ?? event.importance ?? 0 })),
-    [items]
+    [displayItems]
+  );
+
+  // Country-precision events cannot be pins, but they *can* shade their
+  // country. They are passed to the globe separately (polygonEvents) so the
+  // map is never blank just because reporting is country-level.
+  const shadingEvents = useMemo(
+    () =>
+      displayItems
+        .filter((event) => event.country_code)
+        .map((event) => ({ ...event, importance: event.severity ?? event.importance ?? 0 })),
+    [displayItems]
   );
 
   const countryLevel = useMemo(
-    () => items.filter((event) => event.location_precision === "country"),
-    [items]
+    () => displayItems.filter((event) => event.location_precision === "country"),
+    [displayItems]
   );
   const unknownLocation = useMemo(
-    () => items.filter((event) => !event.location_precision || event.location_precision === "unknown"),
-    [items]
+    () => displayItems.filter((event) => !event.location_precision || event.location_precision === "unknown"),
+    [displayItems]
   );
 
-  const shading = layer.data?.country_shading || [];
+  const shading = displayData?.country_shading || [];
 
   const handleCountry = useCallback(
     (country) => {
@@ -180,11 +212,20 @@ export default function MapView({
         </Panel>
       )}
 
+      {fallbackActive && (
+        <p className="ws-inline-note" role="status">
+          No major events ({layer.data?.major_definition || "severity ≥ 6.5 or importance ≥ 8"}) were stored in the
+          last {days} days, so the map is showing all events in that window instead. Collect more data or widen
+          the window to see major events here.
+        </p>
+      )}
+
       <div className="ws-map-grid">
         <div className="ws-map-canvas">
           <Globe
             mode={mode}
             events={plottable}
+            polygonEvents={shadingEvents}
             weather={weather || []}
             onSelectEvent={onSelectEvent}
             onSelectWeather={onSelectWeather}
@@ -218,13 +259,13 @@ export default function MapView({
               <div><dt>Country-level events</dt><dd>{formatNumber(countryLevel.length)}</dd></div>
               <div><dt>Unknown location</dt><dd>{formatNumber(unknownLocation.length)}</dd></div>
               <div><dt>Scope</dt><dd>{scope === "major" ? `major events · last ${days}d` : `all events · last ${days}d`}</dd></div>
-              <div><dt>Rows fetched</dt><dd>{formatNumber(items.length)} (cap {scope === "major" ? 2000 : 500})</dd></div>
+              <div><dt>Rows fetched</dt><dd>{formatNumber(displayItems.length)} (cap {scope === "major" && !fallbackActive ? 2000 : 500})</dd></div>
             </dl>
-            {layer.data?.coverage && (
+            {displayData?.coverage && (
               <p className="ws-muted ws-small">
-                In this window the backend holds {formatCount(layer.data.coverage.plotted_with_coordinates, "event")} with
-                coordinates, {formatCount(layer.data.coverage.country_level_only, "event")} at country level and{" "}
-                {formatCount(layer.data.coverage.no_location, "event")} with no location at all.
+                In this window the backend holds {formatCount(displayData.coverage.plotted_with_coordinates, "event")} with
+                coordinates, {formatCount(displayData.coverage.country_level_only, "event")} at country level and{" "}
+                {formatCount(displayData.coverage.no_location, "event")} with no location at all.
               </p>
             )}
           </Panel>
@@ -272,7 +313,7 @@ export default function MapView({
             </Panel>
           )}
 
-          {items.length === 0 && !layer.loading && !layer.error && (
+          {displayItems.length === 0 && !layer.loading && !layer.error && (
             <Empty title="Nothing to plot in this window">
               {scope === "major"
                 ? `No major events (${layer.data?.major_definition || "severity ≥ 6.5 or importance ≥ 8"}) were stored in the last ${days} days matching these filters. Switch to All events or widen the window.`
