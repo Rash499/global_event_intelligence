@@ -528,7 +528,7 @@ upstream service can theoretically provide.
 | NASA EONET natural events | no | implemented, **unverified** live | Public v3 API (wildfires, storms, floods, volcanoes…); coordinates stored exactly as reported |
 | GDACS disaster alerts | no | implemented, **unverified** live | UN/EC public REST API; alert level/score preserved, numeric severity is a disclosed derived hint |
 | ReliefWeb | pre-approved `appname` | implemented (API v2), disabled by default | Approval required since 1 Nov 2025: https://apidoc.reliefweb.int/ |
-| WHO disease outbreak news | no | implemented | Public RSS |
+| WHO disease outbreak news | no | implemented, **unverified** live | Public OData JSON API (`who.int/api/news/diseaseoutbreaknews`); WHO retired the DON RSS feed (404), countries are read from report titles |
 | NASA FIRMS | free `FIRMS_MAP_KEY` | implemented, needs external config | Reports `not_configured` until the key is set |
 | CAP alert feeds | feed URLs | implemented, needs external config | Validated on ingest |
 | ACLED | licensed account | implemented, **unverified** against a live account | Never enabled by default; Providers page marks it unverified |
@@ -543,7 +543,7 @@ anywhere, and every credential-gated provider is disabled by default.
 
 | Integration | Cost status | Key condition |
 | --- | --- | --- |
-| RSS, GDELT, Google News RSS, USGS, WHO RSS | Free | Keyless. GDELT throttles bursts (429); the app paces requests. Publisher/WHO content stays under its owners' terms — WHO reuse is commonly CC BY-NC-SA |
+| RSS, GDELT, Google News RSS, USGS, WHO JSON API | Free | Keyless. GDELT throttles bursts (429); the app paces requests. Publisher/WHO content stays under its owners' terms — WHO reuse is commonly CC BY-NC-SA |
 | NASA EONET, GDACS | Free | Keyless public APIs (verified 2026-11-27); no registration, no payment details. Event metadata links back to the source; third-party source content keeps its own terms |
 | NASA FIRMS | Free with registration | Free MAP_KEY by email; 5,000 transactions / 10 min |
 | ReliefWeb | Free, approval-gated | Pre-approved appname (v2 API) required since 1 Nov 2025 |

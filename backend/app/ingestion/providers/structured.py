@@ -631,11 +631,71 @@ class ReliefWebProvider(SourceProvider):
 # ----------------------------------------------------------------------
 # WHO Disease Outbreak News
 # ----------------------------------------------------------------------
+WHO_DON_ITEM_BASE = "https://www.who.int/emergencies/disease-outbreak-news/item"
+
+
+def _parse_who_payload(payload, max_entries: int) -> list[dict]:
+    """Flatten the WHO DON OData JSON payload into raw records.
+
+    Response shape (verified against who.int, 2026-11-27):
+    ``{"value": [{"Title", "Summary", "PublicationDateAndTime",
+    "ItemDefaultUrl" ("/2026-DON629"), "UrlName", "Id", ...}]}``.
+    The DON API has no geography; countries are read from the title text
+    during normalisation, exactly as with the retired RSS feed.
+    """
+    if isinstance(payload, dict):
+        items = payload.get("value") or []
+    elif isinstance(payload, list):
+        items = payload
+    else:
+        items = []
+
+    records = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        default_url = item.get("ItemDefaultUrl")
+        url_name = item.get("UrlName")
+        if isinstance(default_url, str) and default_url.startswith("http"):
+            url = default_url
+        elif isinstance(default_url, str) and default_url:
+            url = WHO_DON_ITEM_BASE + (default_url if default_url.startswith("/") else f"/{default_url}")
+        elif url_name:
+            url = f"{WHO_DON_ITEM_BASE}/{url_name}"
+        else:
+            url = None
+        published = to_utc_iso(
+            parse_timestamp(item.get("PublicationDateAndTime") or item.get("PublicationDate"))
+        )
+        records.append(
+            {
+                "record_id": url_name or item.get("Id") or url,
+                "title": item.get("Title"),
+                "url": url,
+                "summary": item.get("Summary"),
+                "published": published,
+            }
+        )
+    # Do not trust the server-side ordering: newest first, then cap.
+    records.sort(key=lambda record: record.get("published") or "", reverse=True)
+    return records[: max(1, max_entries)]
+
+
 class WhoOutbreakProvider(SourceProvider):
+    """WHO Disease Outbreak News via the public OData JSON API (no key).
+
+    WHO retired the DON RSS feed (its URL returns 404), so this provider was
+    migrated to ``https://www.who.int/api/news/diseaseoutbreaknews``. The
+    live response shape was verified by direct inspection on 2026-11-27 and
+    is covered by fixture tests, but no collection has run through this
+    code path yet, so the provider reports ``unverified`` until one does.
+    """
+
     key = "who"
     name = "WHO Disease Outbreak News"
     provider_type = "health"
     docs_url = "https://www.who.int/emergencies/disease-outbreak-news"
+    verification_status = "unverified"
     produces_structured_observations = True
     default_interval_seconds = 3600
 
@@ -643,24 +703,17 @@ class WhoOutbreakProvider(SourceProvider):
         return bool(self.config.who_enabled)
 
     async def fetch_raw(self) -> list[dict]:
-        import feedparser
-
         async with async_client() as client:
-            response = await client.get(self.config.who_feed_url)
-            response.raise_for_status()
-            feed = feedparser.parse(bounded_text(response))
-
-        records = []
-        for entry in feed.entries[: max(1, self.config.who_max_entries)]:
-            records.append(
-                {
-                    "title": entry.get("title"),
-                    "url": entry.get("link"),
-                    "summary": entry.get("summary"),
-                    "published": to_utc_iso(parse_timestamp(entry.get("published"))),
-                }
+            response = await client.get(
+                self.config.who_api_url,
+                params={
+                    "$top": max(1, self.config.who_max_entries),
+                    "$orderby": "PublicationDateAndTime desc",
+                },
             )
-        return records
+            response.raise_for_status()
+            payload = response.json()
+        return _parse_who_payload(payload, self.config.who_max_entries)
 
     def normalise(self, record: dict) -> dict | None:
         url = record.get("url")
@@ -675,7 +728,7 @@ class WhoOutbreakProvider(SourceProvider):
 
         return _observation(
             provider=self.key,
-            record_id=url,
+            record_id=record.get("record_id") or url,
             source_url=url,
             observed_at=record.get("published"),
             event_time=to_utc_iso(parse_timestamp(record.get("published"))),
