@@ -82,6 +82,10 @@ body {
 }
 
 .navbar-orbit {
+  /* Decorative (aria-hidden): it must never intercept clicks meant for
+     the brand button or neighbouring nav links (this blocked the Map
+     nav button in the E2E smoke test). */
+  pointer-events: none;
   position: relative;
   display: grid;
   place-items: center;
