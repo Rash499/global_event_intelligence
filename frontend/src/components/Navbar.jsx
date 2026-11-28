@@ -67,7 +67,7 @@ export default function Navbar({
   return (
     <nav className={scrolled ? "site-navbar is-scrolled" : "site-navbar"} aria-label="Workspace">
       <div className="navbar-inner">
-        <button className="navbar-brand" onClick={() => go("overview")} aria-label="Global Event Intelligence home">
+        <button className="navbar-brand" onClick={() => go("overview")} aria-label="Global Intelligence - operations workspace home">
           <span className="navbar-orbit" aria-hidden="true"><i /><i /><i /></span>
           <span>
             <strong>Global Intelligence</strong>
