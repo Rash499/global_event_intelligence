@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "sources": [
+    {"domain":"bbc.com","tier":2,"propaganda_risk":"low","state_affiliated":false,"region":"United Kingdom"},
+    {"domain":"bbc.co.uk","tier":2,"propaganda_risk":"low","state_affiliated":false,"region":"United Kingdom"},
+    {"domain":"bbci.co.uk","tier":2,"propaganda_risk":"low","state_affiliated":false,"region":"United Kingdom"},
+    {"domain":"npr.org","tier":2,"propaganda_risk":"low","state_affiliated":false,"region":"United States"},
+    {"domain":"aljazeera.com","tier":2,"propaganda_risk":"medium","state_affiliated":true,"region":"Qatar"},
+    {"domain":"dw.com","tier":2,"propaganda_risk":"low","state_affiliated":true,"region":"Germany"},
+    {"domain":"france24.com","tier":2,"propaganda_risk":"low","state_affiliated":true,"region":"France"},
+    {"domain":"nhk.or.jp","tier":2,"propaganda_risk":"low","state_affiliated":true,"region":"Japan"},
+    {"domain":"theguardian.com","tier":2,"propaganda_risk":"low","state_affiliated":false,"region":"United Kingdom"},
+    {"domain":"un.org","tier":1,"propaganda_risk":"low","state_affiliated":false,"region":"International"},
+    {"domain":"reliefweb.int","tier":3,"propaganda_risk":"low","state_affiliated":false,"region":"International"},
+    {"domain":"reuters.com","tier":1,"propaganda_risk":"low","state_affiliated":false,"region":"International"},
+    {"domain":"apnews.com","tier":1,"propaganda_risk":"low","state_affiliated":false,"region":"United States"},
+    {"domain":"afp.com","tier":1,"propaganda_risk":"low","state_affiliated":false,"region":"International"},
+    {"domain":"tass.com","tier":2,"propaganda_risk":"high","state_affiliated":true,"region":"Russia"},
+    {"domain":"rt.com","tier":2,"propaganda_risk":"high","state_affiliated":true,"region":"Russia"},
+    {"domain":"presstv.ir","tier":2,"propaganda_risk":"high","state_affiliated":true,"region":"Iran"},
+    {"domain":"xinhua.net","tier":2,"propaganda_risk":"high","state_affiliated":true,"region":"China"},
+    {"domain":"globaltimes.cn","tier":3,"propaganda_risk":"high","state_affiliated":true,"region":"China"},
+    {"domain":"gov.uk","tier":1,"propaganda_risk":"low","state_affiliated":true,"region":"United Kingdom"},
+    {"domain":"whitehouse.gov","tier":1,"propaganda_risk":"low","state_affiliated":true,"region":"United States"}
+  ]
+}

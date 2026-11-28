@@ -26,6 +26,11 @@ export default function EventHeader({ details, loading, onBack }) {
           <span className={`severity severity-${importanceLabel.toLowerCase()}`}>
             {importanceLabel} impact
           </span>
+          {details.credibility_score != null && (
+            <span className="badge credibility-badge" title="Ranks catalogued source metadata and independent corroboration; it does not judge truth.">
+              Source credibility {details.credibility_score}/100
+            </span>
+          )}
         </div>
 
         <h2>{details.title || "Untitled event"}</h2>

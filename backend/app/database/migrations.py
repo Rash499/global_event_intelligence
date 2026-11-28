@@ -635,6 +635,39 @@ CREATE INDEX IF NOT EXISTS idx_event_likes_event
         conn.execute("PRAGMA foreign_keys = ON")
 
 
+def _m007_source_credibility(conn: sqlite3.Connection) -> None:
+    for column, ddl in {
+        "source_tier": "TEXT DEFAULT 'undeclared'",
+        "propaganda_risk": "TEXT DEFAULT 'medium'",
+        "state_affiliated": "INTEGER DEFAULT 0",
+        "source_region": "TEXT",
+    }.items():
+        add_column(conn, "articles", column, ddl)
+    add_column(conn, "events", "credibility_score", "INTEGER")
+    add_index(conn, "idx_events_credibility", "events(credibility_score)")
+
+
+def _m008_importance_alert_preferences(conn: sqlite3.Connection) -> None:
+    add_column(conn, "events", "importance_score", "REAL")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS user_alert_preferences (
+            user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+            sensitivity TEXT NOT NULL DEFAULT 'critical_and_high'
+                CHECK (sensitivity IN ('critical_only', 'critical_and_high')),
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS alert_event_suppressions (
+            event_id INTEGER PRIMARY KEY REFERENCES events(id) ON DELETE CASCADE,
+            suppressed_until TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    """)
+    add_column(conn, "providers", "consecutive_empty_runs", "INTEGER DEFAULT 0")
+
+
 MIGRATIONS: list[Migration] = [
     Migration(1, "bootstrap_schema", _m001_bootstrap),
     Migration(2, "article_provenance", _m002_article_provenance),
@@ -642,6 +675,8 @@ MIGRATIONS: list[Migration] = [
     Migration(4, "provider_registry", _m004_providers),
     Migration(5, "intelligence_graph", _m005_intelligence_graph),
     Migration(6, "relationship_foreign_keys", _m006_foreign_keys, backup=True),
+    Migration(7, "source_credibility", _m007_source_credibility),
+    Migration(8, "importance_and_alert_preferences", _m008_importance_alert_preferences),
 ]
 
 LATEST_VERSION = max(m.version for m in MIGRATIONS)

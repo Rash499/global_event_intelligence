@@ -53,6 +53,15 @@ export default function EventSources({ sources, loading }) {
                 <span className="source-copy">
                   <strong>{source.title || "Untitled source"}</strong>
                   <small>{source.source || "Unknown publisher"}</small>
+                  <span className="source-metadata">
+                    <span title="Publisher tier from the local source catalog; undeclared is not tier 4">
+                      {source.source_tier === "undeclared" || source.source_tier == null
+                        ? "Tier undeclared"
+                        : `Tier ${source.source_tier}`}
+                    </span>
+                    {source.state_affiliated ? <span title="This publisher is marked state-affiliated in the source catalog">State-affiliated</span> : null}
+                    {source.propaganda_risk ? <span title="Curated source-level risk metadata, not an assessment of this article">Risk: {source.propaganda_risk}</span> : null}
+                  </span>
                 </span>
                 <span className="source-arrow" aria-hidden="true">↗</span>
               </a>

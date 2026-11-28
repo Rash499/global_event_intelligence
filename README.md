@@ -31,7 +31,7 @@ The database layer can later be upgraded to PostgreSQL/PostGIS.
 ## Requirements
 
 - Python 3.11+
-- Node.js 20+
+- Node.js 22.22.2 or newer (matching the frontend engine requirement)
 - npm
 - Internet connection for GDELT/RSS/Google News RSS ingestion
 - Optional: Ollama for local AI analysis
@@ -45,7 +45,7 @@ python -m venv .venv
 
 Windows PowerShell:
 ```powershell
-.\venv\Scripts\Activate.ps1
+.\.venv\Scripts\Activate.ps1
 ```
 
 Windows CMD:
@@ -174,7 +174,11 @@ created event records.
 You can also use Swagger:
 http://localhost:8000/docs
 
-## 6. Optional local AI with Ollama
+## 6. Source provenance and event ranking
+
+Event details display a source-credibility badge and per-publisher catalog labels. The score ranks catalogued source metadata and independent corroboration; it does **not** judge whether an article is true. Publishers absent from the local catalog remain `undeclared`, not tier 4. The 0–100 `importance_score` is a separate ranking from the legacy impact/severity fields. Full definitions and weights are in [docs/scoring-and-source-credibility.md](docs/scoring-and-source-credibility.md).
+
+## 7. Optional local AI with Ollama
 
 Install Ollama separately, then pull a model, for example:
 
@@ -198,7 +202,7 @@ Restart FastAPI.
 
 The ingestion service will ask the local model to classify/summarize candidate articles. If Ollama is unavailable, the application automatically falls back to deterministic analysis, so the MVP still works.
 
-## 7. API examples
+## 8. API examples
 
 Latest events:
 ```text
@@ -228,7 +232,7 @@ GET  /api/ai/suggestions
 POST /api/ai/index        {"force": false, "limit": 300}
 ```
 
-## 8. Global Intelligence Assistant (Phase 3)
+## 9. Global Intelligence Assistant (Phase 3)
 
 The assistant answers questions strictly from indexed platform data. Every answer
 carries numbered evidence records and source links that were verified against the
