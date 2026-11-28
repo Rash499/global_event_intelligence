@@ -37,6 +37,8 @@ from ..intelligence.deduplication import (
     compare_articles,
 )
 from ..intelligence.geolocation import extract_location
+from ..intelligence.importance import calculate_importance_score
+from ..intelligence.source_catalog import credibility_score, source_metadata
 from ..intelligence.taxonomy import TAXONOMY_VERSION
 from .normalize import normalize_article, to_utc_iso, utc_now
 from .registry import PROVIDERS, record_run
@@ -98,6 +100,8 @@ def store_article(conn, article: dict, existing: list[dict]) -> tuple[int | None
             )
             return None, {"duplicate": True, "kind": verdict.kind, "of": candidate["id"]}
 
+    source_facts = source_metadata(article.get("publisher_domain"), article.get("publisher") or article.get("source"))
+    article.update(source_facts)
     article_id = conn.execute(
         """
         INSERT INTO articles (
@@ -105,8 +109,9 @@ def store_article(conn, article: dict, existing: list[dict]) -> tuple[int | None
             provider_record_id, published_at, source_record_at, description, image_url,
             content_hash, description_hash, language, author, extraction_status,
             reporting_type, syndication_of, event_time, event_time_precision,
-            first_seen_at, last_seen_at, is_independent, raw_metadata
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            first_seen_at, last_seen_at, is_independent, raw_metadata,
+            source_tier, propaganda_risk, state_affiliated, source_region
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             article["title"],
@@ -136,6 +141,10 @@ def store_article(conn, article: dict, existing: list[dict]) -> tuple[int | None
             json.dumps(article.get("raw_metadata"), default=str)
             if article.get("raw_metadata")
             else None,
+            article.get("source_tier", "undeclared"),
+            article.get("propaganda_risk", "medium"),
+            int(bool(article.get("state_affiliated", False))),
+            article.get("source_region"),
         ),
     ).lastrowid
     existing.append({**article, "id": article_id})
@@ -173,12 +182,15 @@ async def classify_for_ingestion(article: dict, ai_budget: dict) -> dict:
         )
         if not response:
             return deterministic
+        ai_response_category = response.get("category")
+        if ai_response_category is None:
+            return deterministic
         return merge_ai_classification(
             deterministic,
-            ai_response_category := response.get("category"),
+            ai_response_category,
             response.get("confidence"),
             response.get("subcategory"),
-        ) if ai_response_category is not None else deterministic
+        )
     except Exception as exc:  # noqa: BLE001 - AI is optional
         logger.warning("[AI] classification failed for %s: %s", article.get("url"), exc)
         return deterministic
@@ -225,7 +237,8 @@ def _recompute_event_statistics(conn, event_id: int) -> dict:
             """
             SELECT a.id, a.title, a.url, a.description, a.source, a.publisher,
                    a.publisher_domain, a.published_at, a.first_seen_at,
-                   a.reporting_type, a.content_hash, a.is_independent, a.provider
+                   a.reporting_type, a.content_hash, a.is_independent, a.provider,
+                   a.source_tier, a.propaganda_risk, a.state_affiliated, a.source_region
             FROM articles a
             JOIN event_articles ea ON ea.article_id = a.id
             WHERE ea.event_id = ?
@@ -282,6 +295,12 @@ def _recompute_event_statistics(conn, event_id: int) -> dict:
         independence=independence,
         reported_casualties=reported_casualties,
     )
+    credibility = credibility_score(articles)
+    entity_names = [row[0] for row in conn.execute(
+        "SELECT e.name FROM event_entity_mentions m JOIN entities e ON e.id=m.entity_id WHERE m.event_id=?",
+        (event_id,),
+    ).fetchall()]
+    ranking = calculate_importance_score(dict(event), articles, entity_names)
 
     now_iso = to_utc_iso(utc_now())
     conn.execute(
@@ -294,7 +313,7 @@ def _recompute_event_statistics(conn, event_id: int) -> dict:
             severity = ?, severity_label = ?, severity_components = ?,
             confidence = ?, confidence_components = ?, confidence_explanation = ?,
             priority_score = ?, priority_label = ?,
-            importance = ?, assessment_updated_at = ?,
+            importance = ?, importance_score = ?, credibility_score = ?, assessment_updated_at = ?,
             event_state = ?, event_state_updated_at = ?, updated_at = ?
         WHERE id = ?
         """,
@@ -318,6 +337,8 @@ def _recompute_event_statistics(conn, event_id: int) -> dict:
             assessment["priority"]["score"],
             assessment["priority"]["label"],
             assessment["importance"],
+            ranking["score"],
+            credibility,
             now_iso,
             assessment["state"],
             now_iso,
@@ -722,6 +743,12 @@ async def ingest(providers: list[str] | None = None, trigger: str = "manual") ->
             record_run(result, trigger=trigger)
         except Exception:  # noqa: BLE001 - health persistence must not break ingest
             logger.exception("[PROVIDER] failed to record run for %s", result.provider)
+
+    try:
+        from ..intelligence.digest_cache import invalidate_snapshots
+        invalidate_snapshots()
+    except Exception:  # noqa: BLE001 - cache invalidation cannot fail ingestion
+        logger.exception("[CACHE] digest invalidation failed after ingestion")
 
     finished = utc_now()
     return {

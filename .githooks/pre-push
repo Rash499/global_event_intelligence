@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="$(git rev-parse --show-toplevel)"
+PYTHON="$ROOT/backend/.venv/bin/python"
+if [[ ! -x "$PYTHON" ]]; then PYTHON="$ROOT/.venv/bin/python"; fi
+if [[ ! -x "$PYTHON" ]]; then PYTHON=python3; fi
+"$PYTHON" -m ruff check "$ROOT/backend/app" "$ROOT/backend/tests" "$ROOT/backend/scripts"
+"$PYTHON" -m pytest -q "$ROOT/backend/tests"
+(
+  cd "$ROOT/frontend"
+  npm run lint
+  npx tsc -b
+  npx vitest run
+)

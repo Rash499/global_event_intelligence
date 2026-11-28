@@ -1,4 +1,6 @@
 import axios from "axios";
+
+/** @typedef {import("./generatedApi").components["schemas"]["AlertRuleRequest"]} AlertRuleRequest */
 import { getAuthToken } from "./authSession.jsx";
 
 /**
@@ -240,6 +242,11 @@ export const getProviders = async (history = false) => {
   return response.data;
 };
 
+export const getIntelligenceGaps = async (windowDays = 7) => {
+  const response = await api.get("/intelligence-gaps", { params: { window_days: windowDays } });
+  return response.data;
+};
+
 export const getProviderHistory = async (provider, limit = 50) => {
   const response = await api.get("/providers/history", { params: { provider, limit } });
   return response.data;
@@ -257,6 +264,11 @@ export const getCountriesSummary = async (days = 30) => {
 
 export const getConvergence = async (params = {}) => {
   const response = await api.get("/convergence", { params });
+  return response.data;
+};
+
+export const getSpatialConvergence = async () => {
+  const response = await api.get("/spatial-convergence", { params: { window_hours: 24 } });
   return response.data;
 };
 
@@ -289,6 +301,16 @@ export const getAlerts = async (status) => {
   return response.data;
 };
 
+export const getAlertPreferences = async () => {
+  const response = await api.get("/alerts/preferences");
+  return response.data;
+};
+
+export const updateAlertPreferences = async (sensitivity) => {
+  const response = await api.put("/alerts/preferences", { sensitivity });
+  return response.data;
+};
+
 export const updateAlertStatus = async (alertId, status) => {
   const response = await api.post(`/alerts/${alertId}/status`, { status });
   return response.data;
@@ -299,6 +321,7 @@ export const getAlertRules = async () => {
   return response.data;
 };
 
+/** @param {AlertRuleRequest} rule */
 export const createAlertRule = async (rule) => {
   const response = await api.post("/alert-rules", rule);
   return response.data;

@@ -18,6 +18,10 @@ The main goal is to:
 
 The system is designed so that the React frontend does not communicate directly with the AI model. The FastAPI backend handles ingestion, processing, AI analysis, database storage, and API delivery.
 
+## Source metadata and ranking
+
+Migration 007 stores catalog tier, source-level propaganda-risk, state-affiliation and region per article, plus event-level credibility. Migration 008 adds an independent `importance_score` ranking and per-account alert sensitivity storage. Credibility ranks source metadata and independent corroboration only; it is not a truth determination. Unknown sources remain undeclared. The full methodology is documented in `docs/scoring-and-source-credibility.md`. Alert evaluation applies recency, importance, severity/sensitivity, source-tier, story-phase, per-event deduplication, and global cooldown gates; details are in `docs/alert-gates.md`. Anomaly baselines preserve coverage suppression and add rolling region statistics and keyword-volume checks, documented in `docs/anomaly-baselines.md`. Country risk now exposes a weighted descriptive indicator with component/coverage detail, documented in `docs/country-instability-score.md`. The original country-category convergence remains unchanged; a separate 1° spatial clustering route and gated alert path is documented in `docs/geographic-convergence.md`. Provider freshness/gap indicators and silent-zero detection are described in `docs/provider-freshness-and-gaps.md`. Engineering checks, API type generation, hook setup and demo-data E2E checks are in `docs/engineering-practices.md`. Scheduler digests use the cache described in `docs/digest-cache.md`. Provider cost and license posture, including source integrations deferred for verification, are in `docs/data-sources.md`. The final phase status and verification report is `docs/WORLDMONITOR_UPGRADE_REPORT.md`.
+
 ---
 
 # 2. High-Level System Architecture

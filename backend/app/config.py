@@ -81,6 +81,7 @@ class Settings(BaseSettings):
     gdelt_request_interval_seconds: float = 5.0
     gdelt_throttle_max_retries: int = 2
     rss_max_entries_per_feed: int = 30
+    rss_include_state_affiliated: bool = False
     google_news_max_per_query: int = 20
     google_news_language: str = "en-US"
     google_news_country: str = "US"

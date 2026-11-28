@@ -29,6 +29,26 @@ logger = logging.getLogger(__name__)
 _running: set[str] = set()
 _next_run: dict[str, datetime] = {}
 _last_run: dict[str, str] = {}
+_next_digest_refresh: datetime | None = None
+
+
+def _refresh_digest_snapshots() -> None:
+    """Prewarm the bounded dashboard, country, and convergence snapshots."""
+    from ..api.intelligence import dashboard_overview, country_risk, convergence, spatial_convergence
+    from ..database.db import get_connection
+    from ..intelligence.geolocation import COUNTRY_BY_CODE
+
+    dashboard_overview(24)
+    convergence(7, 3, 10)
+    spatial_convergence(24, 100)
+    conn = get_connection()
+    try:
+        codes = [row[0] for row in conn.execute("SELECT DISTINCT country_code FROM events WHERE country_code IS NOT NULL").fetchall()]
+    finally:
+        conn.close()
+    for code in codes:
+        if code in COUNTRY_BY_CODE:
+            country_risk(code, 30)
 
 
 def schedule_state() -> dict:
@@ -81,7 +101,9 @@ async def _run_job(key: str) -> None:
 
 async def scheduler_loop() -> None:
     """Main scheduling loop. Runs until cancelled."""
+    global _next_digest_refresh
     now = datetime.now(timezone.utc)
+    _next_digest_refresh = now + timedelta(seconds=10)
     for index, key in enumerate(PROVIDERS):
         # Spread the first runs over the first couple of minutes.
         _next_run[key] = now + timedelta(seconds=5 + (index * 4) + random.uniform(0, 3))
@@ -97,6 +119,9 @@ async def scheduler_loop() -> None:
                 # Fire and forget: independent jobs, never awaited in sequence.
                 asyncio.create_task(_run_job(key))
                 _next_run[key] = now + timedelta(seconds=provider_interval_seconds(key))
+            if _next_digest_refresh is not None and now >= _next_digest_refresh:
+                asyncio.create_task(asyncio.to_thread(_refresh_digest_snapshots))
+                _next_digest_refresh = now + timedelta(minutes=15)
             await asyncio.sleep(tick)
         except asyncio.CancelledError:
             logger.info("[SCHEDULER] stopping")

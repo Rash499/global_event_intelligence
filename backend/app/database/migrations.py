@@ -635,6 +635,83 @@ CREATE INDEX IF NOT EXISTS idx_event_likes_event
         conn.execute("PRAGMA foreign_keys = ON")
 
 
+def _m007_source_credibility(conn: sqlite3.Connection) -> None:
+    for column, ddl in {
+        "source_tier": "TEXT DEFAULT 'undeclared'",
+        "propaganda_risk": "TEXT DEFAULT 'medium'",
+        "state_affiliated": "INTEGER DEFAULT 0",
+        "source_region": "TEXT",
+    }.items():
+        add_column(conn, "articles", column, ddl)
+    add_column(conn, "events", "credibility_score", "INTEGER")
+    add_index(conn, "idx_events_credibility", "events(credibility_score)")
+
+
+def _m008_importance_alert_preferences(conn: sqlite3.Connection) -> None:
+    add_column(conn, "events", "importance_score", "REAL")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS user_alert_preferences (
+            user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+            sensitivity TEXT NOT NULL DEFAULT 'critical_and_high'
+                CHECK (sensitivity IN ('critical_only', 'critical_and_high')),
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS alert_event_suppressions (
+            event_id INTEGER PRIMARY KEY REFERENCES events(id) ON DELETE CASCADE,
+            suppressed_until TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    """)
+    add_column(conn, "providers", "consecutive_empty_runs", "INTEGER DEFAULT 0")
+
+
+def _m009_region_baselines(conn: sqlite3.Connection) -> None:
+    add_column(conn, "anomalies", "severity", "TEXT")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS region_baseline_samples (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            region TEXT NOT NULL,
+            bucket_kind TEXT NOT NULL CHECK(bucket_kind IN ('weekday','month')),
+            bucket_key TEXT NOT NULL,
+            sample_date TEXT NOT NULL,
+            observed_count REAL NOT NULL,
+            sample_event_ids TEXT NOT NULL DEFAULT '[]',
+            UNIQUE(region,bucket_kind,bucket_key,sample_date)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS region_baselines (
+            region TEXT NOT NULL,
+            bucket_kind TEXT NOT NULL,
+            bucket_key TEXT NOT NULL,
+            sample_count INTEGER NOT NULL DEFAULT 0,
+            mean REAL NOT NULL DEFAULT 0,
+            m2 REAL NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY(region,bucket_kind,bucket_key)
+        )
+    """)
+    add_index(conn, "idx_region_baseline_sample_date", "region_baseline_samples(sample_date)")
+    add_index(conn, "idx_region_baselines_region", "region_baselines(region,bucket_kind)")
+
+
+def _m010_digest_snapshots(conn: sqlite3.Connection) -> None:
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS digest_snapshots (
+            snapshot_key TEXT PRIMARY KEY,
+            payload TEXT NOT NULL,
+            generated_at TEXT NOT NULL
+        )
+    """)
+
+
+def _m011_anomaly_z_score(conn: sqlite3.Connection) -> None:
+    add_column(conn, "anomalies", "z_score", "REAL")
+
+
 MIGRATIONS: list[Migration] = [
     Migration(1, "bootstrap_schema", _m001_bootstrap),
     Migration(2, "article_provenance", _m002_article_provenance),
@@ -642,6 +719,11 @@ MIGRATIONS: list[Migration] = [
     Migration(4, "provider_registry", _m004_providers),
     Migration(5, "intelligence_graph", _m005_intelligence_graph),
     Migration(6, "relationship_foreign_keys", _m006_foreign_keys, backup=True),
+    Migration(7, "source_credibility", _m007_source_credibility),
+    Migration(8, "importance_and_alert_preferences", _m008_importance_alert_preferences),
+    Migration(9, "region_baselines", _m009_region_baselines),
+    Migration(10, "digest_snapshots", _m010_digest_snapshots),
+    Migration(11, "anomaly_z_score", _m011_anomaly_z_score),
 ]
 
 LATEST_VERSION = max(m.version for m in MIGRATIONS)

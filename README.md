@@ -31,10 +31,16 @@ The database layer can later be upgraded to PostgreSQL/PostGIS.
 ## Requirements
 
 - Python 3.11+
-- Node.js 20+
+- Node.js 22.22.2 or newer (matching the frontend engine requirement)
 - npm
 - Internet connection for GDELT/RSS/Google News RSS ingestion
 - Optional: Ollama for local AI analysis
+
+## Engineering checks
+
+Scheduler-precomputed dashboard, country-risk and convergence digests are served from a SQLite snapshot cache with cache-age metadata; ingestion invalidates snapshots ([docs/digest-cache.md](docs/digest-cache.md)).
+
+Use `npm run types:api` in `frontend/` to regenerate TypeScript API contracts from FastAPI OpenAPI. Lint commands are Ruff (`cd backend && python -m ruff check app tests scripts`) and Biome (`cd frontend && npm run lint`). Install the repository pre-push checks once with `./scripts/install-git-hooks.sh`. Playwright smoke/accessibility tests use demo data: `cd frontend && npm run test:e2e`. Details: [docs/engineering-practices.md](docs/engineering-practices.md). The full upgrade status, including deferred providers and follow-ups, is in [docs/WORLDMONITOR_UPGRADE_REPORT.md](docs/WORLDMONITOR_UPGRADE_REPORT.md).
 
 ## 1. Backend
 
@@ -45,7 +51,7 @@ python -m venv .venv
 
 Windows PowerShell:
 ```powershell
-.\venv\Scripts\Activate.ps1
+.\.venv\Scripts\Activate.ps1
 ```
 
 Windows CMD:
@@ -174,7 +180,31 @@ created event records.
 You can also use Swagger:
 http://localhost:8000/docs
 
-## 6. Optional local AI with Ollama
+## 6. Source provenance and event ranking
+
+Event details display a source-credibility badge and per-publisher catalog labels. The score ranks catalogued source metadata and independent corroboration; it does **not** judge whether an article is true. Publishers absent from the local catalog remain `undeclared`, not tier 4. State-affiliated RSS publishers are labelled and excluded from default feeds; opt in with `RSS_INCLUDE_STATE_AFFILIATED=true`. The 0–100 `importance_score` is a separate ranking from the legacy impact/severity fields. Full definitions and weights are in [docs/scoring-and-source-credibility.md](docs/scoring-and-source-credibility.md).
+
+## 7. Alert noise controls
+
+Alerts require recent, important, high/critical events and use per-event and global cooldowns. Signed-in users can select critical-only or critical-and-high sensitivity in Alerts. Tier 3+/undeclared news sources require non-keyword ML/LLM classification; structured observations remain eligible from their provider evidence. See [docs/alert-gates.md](docs/alert-gates.md).
+
+## 8. Anomaly baselines
+
+Anomaly results retain the coverage-adequacy guard and now include weekday/month-matched 90-day regional baselines, a ten-sample cold-start minimum, z-score severity bands, and a reporting-term spike check. The signal describes stored reporting activity only. See [docs/anomaly-baselines.md](docs/anomaly-baselines.md).
+
+## 9. Country instability indicator
+
+Country details now expose a weighted 0–100 indicator with an explicit baseline, event components, capped free-provider boosts, floors, and data coverage warning. The underlying counts remain available. See [docs/country-instability-score.md](docs/country-instability-score.md).
+
+## 10. Geographic convergence
+
+`/api/convergence` compares country-level taxonomy-group counts across windows; `/api/spatial-convergence` instead bins geolocated events into 1° cells and identifies 3+ category co-location over 24 hours. MapView lists qualifying cells, and alert creation remains subject to the noise gates. See [docs/geographic-convergence.md](docs/geographic-convergence.md).
+
+## 11. Provider freshness and intelligence gaps
+
+Provider status now includes schedule-aware freshness and silent-zero detection. `/api/intelligence-gaps` lists missing provider/category/geolocation coverage and is shown in System and Providers. Country detail cards keep a coverage warning. A quiet collection window is not evidence of calm. See [docs/provider-freshness-and-gaps.md](docs/provider-freshness-and-gaps.md). The current providers' access and license posture, plus integrations deferred because endpoint/license reachability could not be verified, are listed in [docs/data-sources.md](docs/data-sources.md).
+
+## 12. Optional local AI with Ollama
 
 Install Ollama separately, then pull a model, for example:
 
@@ -198,7 +228,7 @@ Restart FastAPI.
 
 The ingestion service will ask the local model to classify/summarize candidate articles. If Ollama is unavailable, the application automatically falls back to deterministic analysis, so the MVP still works.
 
-## 7. API examples
+## 13. API examples
 
 Latest events:
 ```text
@@ -228,7 +258,7 @@ GET  /api/ai/suggestions
 POST /api/ai/index        {"force": false, "limit": 300}
 ```
 
-## 8. Global Intelligence Assistant (Phase 3)
+## 14. Global Intelligence Assistant (Phase 3)
 
 The assistant answers questions strictly from indexed platform data. Every answer
 carries numbered evidence records and source links that were verified against the

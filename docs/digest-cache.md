@@ -1,0 +1,3 @@
+# Scheduler digest cache
+
+Migration 010 adds `digest_snapshots`. Dashboard overview, country-risk breakdowns, temporal convergence and spatial convergence use a bounded SQLite JSON snapshot cache and return `cache_age_seconds`. Cache entries are keyed by query window and invalidated after every ingestion cycle, including provider-status changes. The scheduler prewarms the dashboard and convergence digests on startup and every 15 minutes, plus active country-risk entries. If an entry is absent/expired, the API computes it on demand and refreshes the snapshot. The cache is an optimization; SQLite event records remain the source of truth.

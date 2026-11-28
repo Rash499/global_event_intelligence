@@ -249,6 +249,8 @@ def test_convergence_requires_multiple_escalating_groups(client, conn):
     insert("Outbreak B", "public_health", "LK", 5.0, 3)
     insert("Riot A", "protest_unrest", "LK", 5.0, 2)
     insert("Riot B", "protest_unrest", "LK", 5.0, 4)
+    from app.intelligence.digest_cache import invalidate_snapshots
+    invalidate_snapshots()  # direct fixture inserts bypass the ingestion invalidation hook
     body = client.get("/api/convergence").json()
     countries = {item["country_code"]: item for item in body["items"]}
     assert "LK" in countries
@@ -256,6 +258,34 @@ def test_convergence_requires_multiple_escalating_groups(client, conn):
     # Both routes fire here (3 current vs 0 previous, plus a critical event);
     # the critical-severity route must be among the stated reasons.
     assert "critical_severity" in lk_groups["natural_weather"]["reasons"]
+
+
+def test_spatial_convergence_bins_three_categories(client, conn):
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    for title, category in [("Flood observation", "natural_disaster"), ("Protest observation", "protest_unrest"), ("Clash observation", "armed_conflict")]:
+        conn.execute("""
+            INSERT INTO events(title,category,country,country_code,latitude,longitude,severity,occurred_at,event_time,created_at,importance)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?)
+        """, (title, category, "Testland", "LK", 7.2, 79.8, 7, now, now, now, 8))
+    body = client.get("/api/spatial-convergence").json()
+    assert body["count"] == 1
+    item = body["items"][0]
+    assert item["distinct_event_types"] == 3
+    assert item["score"] == 81
+    assert item["severity"] == "high"
+    assert item["nearest_country"]
+    from app.alerts.evaluator import evaluate_all_rules
+    assert evaluate_all_rules() == 1
+    alert = client.get("/api/alerts").json()["items"][0]
+    assert alert["reason"] == "Spatial convergence"
+    assert alert["evidence"]["cell"] == item["cell"]
+
+
+def test_intelligence_gaps_endpoint_reports_coverage_caveat(client, seeded):
+    body = client.get("/api/intelligence-gaps").json()
+    assert "gaps" in body and "providers" in body
+    assert "not evidence" in body["caveat"]
 
 
 def test_country_without_reporting_is_not_described_as_safe(client, seeded):
@@ -271,7 +301,29 @@ def test_unknown_country_code_is_404(client):
 # ----------------------------------------------------------------------
 # Alerts
 # ----------------------------------------------------------------------
+def _refresh_alert_fixture(seeded):
+    """Alert gate integration cases use events inside the 15-minute window."""
+    seeded.execute(
+        "UPDATE events SET occurred_at=?, event_time=?, importance_score=80",
+        (_iso(), _iso()),
+    )
+
+
+def test_alert_sensitivity_preference_persists_per_account(client):
+    email = "alerts-user@example.com"
+    registered = client.post("/api/auth/register", json={"email": email, "password": "long-demo-password", "display_name": "Alert User"})
+    assert registered.status_code == 201
+    token = registered.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    assert client.get("/api/alerts/preferences", headers=headers).json()["sensitivity"] == "critical_and_high"
+    updated = client.put("/api/alerts/preferences", headers=headers, json={"sensitivity": "critical_only"})
+    assert updated.status_code == 200
+    assert client.get("/api/alerts/preferences", headers=headers).json()["sensitivity"] == "critical_only"
+    assert client.get("/api/alerts/preferences").status_code == 401
+
+
 def test_alert_rule_creation_and_evaluation(client, seeded):
+    _refresh_alert_fixture(seeded)
     created = client.post(
         "/api/alert-rules",
         json={"name": "Japan earthquakes", "country_code": "jp", "category": "natural_disaster", "min_severity": 7},
@@ -291,16 +343,18 @@ def test_alert_rule_creation_and_evaluation(client, seeded):
 
 
 def test_alert_evaluation_is_idempotent(client, seeded):
+    _refresh_alert_fixture(seeded)
     client.post("/api/alert-rules", json={"name": "All disasters", "category": "natural_disaster"})
     from app.alerts.evaluator import evaluate_all_rules
 
     first = evaluate_all_rules()
     second = evaluate_all_rules()
-    assert first == 2
+    assert first == 1  # global 60-second cooldown suppresses the second matching event
     assert second == 0
 
 
 def test_alert_status_transitions(client, seeded):
+    _refresh_alert_fixture(seeded)
     client.post("/api/alert-rules", json={"name": "Any disaster", "category": "natural_disaster"})
     from app.alerts.evaluator import evaluate_all_rules
 

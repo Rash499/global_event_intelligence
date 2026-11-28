@@ -1,4 +1,6 @@
-# Delivery report
+# Historical delivery report (pre-upgrade)
+
+This is the earlier delivery snapshot; its counts and migration version are historical. For the current implementation and verification counts, see [WORLDMONITOR_UPGRADE_REPORT.md](WORLDMONITOR_UPGRADE_REPORT.md).
 
 Scope: improve the existing Global Event Intelligence Platform in place. No
 rebuild, no fabricated intelligence, no new infrastructure.

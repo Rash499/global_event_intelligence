@@ -4,7 +4,7 @@ import Globe from "../Globe.jsx";
 import FlatMap from "../globe/FlatMap.jsx";
 import WeatherModeToggle from "../weather/WeatherModeToggle.jsx";
 import useApiResource from "../../hooks/useApiResource";
-import { getMapEvents } from "../../services/api.jsx";
+import { getMapEvents, getSpatialConvergence } from "../../services/api.jsx";
 import { formatCount, formatNumber, isPlottable, severityColour, severityBand } from "../../services/format.jsx";
 import { formatRelativeTime } from "../../services/dateFormat.jsx";
 import {
@@ -89,6 +89,8 @@ export default function MapView({
         : [...current, layerId]
     );
   }, []);
+
+  const spatial = useApiResource(() => getSpatialConvergence(), []);
 
   const layer = useApiResource(
     () =>
@@ -464,6 +466,24 @@ export default function MapView({
         </div>
 
         <aside className="ws-map-aside">
+          {mode === "events" && (
+            <Panel title="Spatial convergence" eyebrow="24-HOUR GEOGRAPHIC CELLS">
+              {spatial.error ? <ErrorState error={spatial.error} onRetry={spatial.reload} /> : (spatial.data?.items || []).length === 0 ? (
+                <p className="ws-muted ws-small">No 1° cell currently contains three distinct event types. This measures co-location in collected reporting.</p>
+              ) : (
+                <ul className="ws-rank-list">
+                  {spatial.data.items.slice(0, 8).map((item) => (
+                    <li key={`${item.cell.latitude_bin}:${item.cell.longitude_bin}`}>
+                      <span>{item.nearest_country?.name || "Nearest known region"} · {item.distinct_event_types} types · {item.event_count} events</span>
+                      <Badge tone={item.severity === "critical" ? "danger" : "warn"}>{item.severity} · {item.score}</Badge>
+                      <small className="ws-muted">{item.event_types.join(", ")} · cell {item.cell.latitude_bin}°, {item.cell.longitude_bin}°</small>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <SourceNote>Cells use 1° bins over the last 24 hours. Categories are event types; nearest-country labels are approximate centers, not exact borders.</SourceNote>
+            </Panel>
+          )}
           {mode === "events" && (
             <Panel title="Map layers" eyebrow="STORED EVENT LAYERS">
               <ul className="ws-layer-list">

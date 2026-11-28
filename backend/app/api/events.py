@@ -111,6 +111,11 @@ def _serialize_event(row: dict) -> dict:
         else None
     )
     event["is_structured_observation"] = bool(event.get("is_structured_observation"))
+    event["credibility"] = {
+        "score": event.get("credibility_score"),
+        "label": "Source credibility",
+        "explanation": "A provenance and independent-corroboration indicator; it ranks source metadata and does not judge whether a report is true.",
+    }
     event["corroboration"] = {
         "level": event.get("corroboration_level"),
         "independent_publishers": event.get("independent_source_count"),
@@ -294,7 +299,8 @@ async def event(event_id: int, user=Depends(get_optional_user)):
                 SELECT a.title, a.url, a.canonical_url, a.source, a.publisher,
                        a.publisher_domain, a.provider, a.published_at, a.first_seen_at,
                        a.last_seen_at, a.image_url, a.language, a.reporting_type,
-                       a.is_independent, a.extraction_status
+                       a.is_independent, a.extraction_status, a.source_tier,
+                       a.propaganda_risk, a.state_affiliated, a.source_region
                 FROM articles a
                 JOIN event_articles ea ON ea.article_id = a.id
                 WHERE ea.event_id = ?

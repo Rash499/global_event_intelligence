@@ -9,7 +9,7 @@ services:
       OLLAMA_ENABLED: "false"
 
   frontend:
-    image: node:20
+    image: node:22.22.2
     working_dir: /app
     volumes:
       - ./frontend:/app

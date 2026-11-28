@@ -1,4 +1,4 @@
-import { getIngestionStatus, getSystemStatus } from "../../services/api.jsx";
+import { getIngestionStatus, getSystemStatus, getIntelligenceGaps } from "../../services/api.jsx";
 import { formatDateTime } from "../../services/dateFormat.jsx";
 import { formatNumber, humanise } from "../../services/format.jsx";
 import useApiResource from "../../hooks/useApiResource";
@@ -14,6 +14,7 @@ import { Badge, Empty, ErrorState, Loading, Panel, SourceNote, Stat } from "./pr
 export default function SystemView() {
   const status = useApiResource(() => getSystemStatus(), [], { pollMs: 60000 });
   const ingestion = useApiResource(() => getIngestionStatus(), [], { pollMs: 30000 });
+  const gaps = useApiResource(() => getIntelligenceGaps(), [], { pollMs: 60000 });
 
   if (status.loading && !status.data) return <Loading label="Loading system status" />;
   if (status.error) return <ErrorState error={status.error} onRetry={status.reload} title="System status unavailable" />;
@@ -131,6 +132,11 @@ export default function SystemView() {
           </SourceNote>
         </Panel>
       </div>
+
+      <Panel title="Intelligence gaps" eyebrow={`${formatNumber(gaps.data?.count ?? 0)} CURRENT GAPS`}>
+        <p className="ws-muted ws-small">{gaps.data?.caveat || "Coverage gap status is unavailable."}</p>
+        {(gaps.data?.gaps || []).length ? <ul className="ws-compact-list">{gaps.data.gaps.slice(0, 12).map((gap, index) => <li key={`${gap.type}-${gap.provider || gap.category}-${index}`}><Badge tone={gap.status === "error" ? "danger" : "warn"}>{gap.type}</Badge><span>{gap.provider || gap.category}</span><span className="ws-muted">{gap.detail}</span></li>)}</ul> : <p className="ws-muted ws-small">No gaps found in current stored data.</p>}
+      </Panel>
 
       <Panel title="Recent collection runs" eyebrow="ALL PROVIDERS">
         {(ingestion.data?.recent_runs || []).length === 0 ? (

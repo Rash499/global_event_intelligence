@@ -30,6 +30,7 @@ from ..intelligence.taxonomy import (
     taxonomy_payload,
 )
 from ..intelligence.geolocation import COUNTRY_BY_CODE, coordinate_for_country
+from ..intelligence.country_risk import calculate_country_risk
 from .auth import get_optional_user
 
 router = APIRouter(prefix="/api", tags=["intelligence"])
@@ -49,6 +50,12 @@ def dashboard_overview(hours: int = Query(24, ge=1, le=168)):
     Everything here is counted from the database; nothing is estimated or
     hardcoded. Freshness fields let the UI show how old the picture is.
     """
+    from ..intelligence.digest_cache import read_snapshot, write_snapshot
+
+    cache_key = f"dashboard-overview:{hours}"
+    cached = read_snapshot(cache_key)
+    if cached is not None:
+        return cached
     now = datetime.now(timezone.utc)
     window_start = _iso(now - timedelta(hours=hours))
     day_start = _iso(now - timedelta(hours=24))
@@ -218,7 +225,7 @@ def dashboard_overview(hours: int = Query(24, ge=1, le=168)):
 
     from ..ingestion.registry import provider_status_summary
 
-    return {
+    response = {
         "generated_at": _iso(now),
         "window_hours": hours,
         "taxonomy_version": TAXONOMY_VERSION,
@@ -238,11 +245,36 @@ def dashboard_overview(hours: int = Query(24, ge=1, le=168)):
             "latest_event": totals["last_event_at"],
         },
     }
+    response["cache_age_seconds"] = 0
+    write_snapshot(cache_key, response, generated_at=now)
+    return response
 
 
 # ----------------------------------------------------------------------
 # Providers
 # ----------------------------------------------------------------------
+@router.get("/intelligence-gaps")
+def intelligence_gaps(window_days: int = Query(7, ge=1, le=30)):
+    """Summarize provider and taxonomy coverage gaps without inferring calm."""
+    from ..ingestion.registry import provider_health_payload
+    since = _iso(datetime.now(timezone.utc) - timedelta(days=window_days))
+    provider_items = provider_health_payload()
+    conn = get_connection()
+    try:
+        observed = {row["category"] for row in conn.execute("SELECT DISTINCT category FROM events WHERE category IS NOT NULL AND julianday(COALESCE(occurred_at,event_time,created_at)) >= julianday(?)", (since,)).fetchall()}
+        categories = sorted(TAXONOMY.keys()) if isinstance(TAXONOMY, dict) else []
+        category_gaps = [category for category in categories if category not in observed]
+        location = conn.execute("SELECT COUNT(*) AS total,SUM(CASE WHEN latitude IS NULL OR longitude IS NULL THEN 1 ELSE 0 END) AS unlocated FROM events WHERE julianday(COALESCE(occurred_at,event_time,created_at)) >= julianday(?)", (since,)).fetchone()
+    finally:
+        conn.close()
+    unavailable = [item for item in provider_items if item.get("freshness_status") in {"error", "no_data", "stale", "very_stale", "disabled"}]
+    silent_zero = [item["provider"] for item in provider_items if item.get("silent_zero")]
+    gaps = [{"type":"provider", "provider":item["provider"], "status":item.get("freshness_status"), "detail":item.get("notes") or item.get("last_error") or "Provider has no recent data."} for item in unavailable]
+    gaps.extend({"type":"category", "category":category, "detail":"No events in this taxonomy category were stored in the selected window."} for category in category_gaps)
+    gaps.extend({"type":"silent_zero", "provider":key, "detail":"Three or more consecutive successful runs returned zero records."} for key in silent_zero)
+    return {"generated_at":_iso(datetime.now(timezone.utc)), "window_days":window_days, "gaps":gaps, "count":len(gaps), "providers":provider_items, "categories": {"observed":sorted(observed), "no_events":category_gaps}, "location_coverage":{"events":location["total"] or 0,"without_coordinates":location["unlocated"] or 0}, "caveat":"A reporting gap is unknown coverage, not evidence that there is no event or that conditions are calm."}
+
+
 @router.get("/providers")
 def providers(history: bool = False):
     from ..ingestion.registry import provider_health_payload
@@ -361,15 +393,20 @@ def country_risk(
     country_code: str,
     days: int = Query(30, ge=1, le=365),
 ):
-    """Explainable country indicators.
+    """Return a transparent composite indicator with component coverage notes.
 
-    Deliberately *not* a single "risk score". Each dimension is reported with
-    its input events, its own coverage caveat and the reporting volume that
-    supports it, because a country with little coverage must not look safe.
+    The score is descriptive over ingested records, not a forecast. The response
+    retains the underlying indicators and a warning whenever input coverage is
+    missing or sparse.
     """
     code = country_code.upper()
     if code not in COUNTRY_BY_CODE:
         raise HTTPException(status_code=404, detail="Unknown country code")
+    from ..intelligence.digest_cache import read_snapshot, write_snapshot
+    cache_key = f"country-risk:{code}:{days}"
+    cached = read_snapshot(cache_key)
+    if cached is not None:
+        return cached
 
     since = _iso(datetime.now(timezone.utc) - timedelta(days=days))
     conn = get_connection()
@@ -379,7 +416,7 @@ def country_risk(
             for row in conn.execute(
                 """
                 SELECT id, title, category, subcategory, severity, severity_label,
-                       confidence, event_state, occurred_at, priority_score
+                       confidence, event_state, occurred_at, priority_score, provider_keys
                 FROM events
                 WHERE country_code = ?
                   AND julianday(COALESCE(occurred_at, event_time, created_at)) >= julianday(?)
@@ -458,6 +495,7 @@ def country_risk(
     finally:
         conn.close()
 
+    country_score = calculate_country_risk(code, rows, article_count, publisher_count)
     by_day: dict[str, dict] = {}
     for row in timeline_rows:
         day = by_day.setdefault(
@@ -562,25 +600,27 @@ def country_risk(
         )
         coverage_level = "good"
 
-    return {
+    generated_at = datetime.now(timezone.utc)
+    response = {
         "country_code": code,
         "country": COUNTRY_BY_CODE[code]["name"],
         "period_days": days,
-        "generated_at": _iso(datetime.now(timezone.utc)),
+        "generated_at": _iso(generated_at),
         "total_events": len(rows),
         "articles": article_count,
         "publishers": publisher_count,
         "coverage": {"level": coverage_level, "note": coverage_note},
+        "risk_score": country_score,
         "dimensions": dimensions,
         "movement": movement,
         "timeline": {"window_days": 7, "days": timeline_days},
         "active_signals": active_signals,
         "recent_events": rows[:20],
         "methodology": (
-            "Indicators are counts and severity averages of stored events within the "
-            "period, grouped by taxonomy category. They are descriptive statistics over "
-            "collected reporting, not an empirical risk index, and they inherit the "
-            "collection coverage shown above."
+            "The composite instability indicator is 0.40 × curated baseline + 0.60 × eventScore; "
+            "eventScore is 0.25 × unrest + 0.30 × conflict + 0.20 × security + 0.25 × information. "
+            "Provider boosts are shown separately, capped, and the result is clamped to 0–100. "
+            "Underlying indicators are descriptive statistics over collected reporting and inherit the coverage caveat."
         ),
         "limitations": [
             "Countries with less collected reporting will show fewer events regardless of the real situation.",
@@ -588,6 +628,9 @@ def country_risk(
             "No forecasting or prediction is implied by these indicators.",
         ],
     }
+    response["cache_age_seconds"] = 0
+    write_snapshot(cache_key, response, generated_at=generated_at)
+    return response
 
 
 @router.get("/countries")
@@ -698,6 +741,11 @@ def convergence(
     carries the per-group counts and the highest-severity evidence events so
     the claim can be inspected rather than trusted.
     """
+    from ..intelligence.digest_cache import read_snapshot, write_snapshot
+    cache_key = f"convergence:{window_days}:{min_groups}:{limit}"
+    cached = read_snapshot(cache_key)
+    if cached is not None:
+        return cached
     now = datetime.now(timezone.utc)
     current_start = _iso(now - timedelta(days=window_days))
     previous_start = _iso(now - timedelta(days=window_days * 2))
@@ -822,14 +870,41 @@ def convergence(
     finally:
         conn.close()
 
-    return {
+    response = {
         "generated_at": _iso(now),
         "window_days": window_days,
         "min_groups": min_groups,
         "definition": CONVERGENCE_DEFINITION.format(min_groups=min_groups),
         "items": qualifying,
         "count": len(qualifying),
+        "cache_age_seconds": 0,
     }
+    write_snapshot(cache_key, response, generated_at=now)
+    return response
+
+
+@router.get("/spatial-convergence")
+def spatial_convergence(window_hours: int = Query(24, ge=1, le=24), limit: int = Query(100, ge=1, le=500)):
+    """Find 1-degree cells with at least three distinct event categories."""
+    from ..intelligence.digest_cache import read_snapshot, write_snapshot
+    cache_key = f"spatial-convergence:{window_hours}:{limit}"
+    cached = read_snapshot(cache_key)
+    if cached is not None:
+        return cached
+    from ..intelligence.convergence import spatial_convergence_cells
+
+    now = datetime.now(timezone.utc)
+    conn = get_connection()
+    try:
+        items = spatial_convergence_cells(conn, now=now, window_hours=window_hours)
+    finally:
+        conn.close()
+    items = items[:limit]
+    for item in items:
+        item.pop("representative_event", None)
+    response = {"generated_at": _iso(now), "window_hours": window_hours, "cell_size_degrees": 1, "count": len(items), "items": items, "cache_age_seconds": 0}
+    write_snapshot(cache_key, response, generated_at=now)
+    return response
 
 
 # ----------------------------------------------------------------------
@@ -974,6 +1049,33 @@ class AlertRuleRequest(BaseModel):
     event_state: str | None = None
     entity: str | None = None
     keywords: str | None = None
+
+
+@router.get("/alerts/preferences")
+def get_alert_preferences(user=Depends(get_optional_user)):
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in to manage alert sensitivity")
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT sensitivity FROM user_alert_preferences WHERE user_id=?", (user["id"],)).fetchone()
+    finally:
+        conn.close()
+    return {"sensitivity": row["sensitivity"] if row else "critical_and_high"}
+
+
+@router.put("/alerts/preferences")
+def update_alert_preferences(payload: dict = Body(...), user=Depends(get_optional_user)):
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in to manage alert sensitivity")
+    sensitivity = payload.get("sensitivity")
+    if sensitivity not in {"critical_only", "critical_and_high"}:
+        raise HTTPException(status_code=422, detail="Sensitivity must be critical_only or critical_and_high")
+    with write_connection() as conn:
+        conn.execute("""
+            INSERT INTO user_alert_preferences(user_id,sensitivity,updated_at) VALUES(?,?,?)
+            ON CONFLICT(user_id) DO UPDATE SET sensitivity=excluded.sensitivity,updated_at=excluded.updated_at
+        """, (user["id"], sensitivity, _iso(datetime.now(timezone.utc))))
+    return {"sensitivity": sensitivity}
 
 
 @router.get("/alerts")

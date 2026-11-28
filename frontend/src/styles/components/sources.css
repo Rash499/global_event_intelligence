@@ -1,3 +1,19 @@
+/* Source provenance labels stay compact and visually distinct from impact. */
+.source-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 4px;
+}
+.source-metadata > span,
+.credibility-badge {
+  border: 1px solid rgba(94, 179, 211, 0.24);
+  border-radius: 999px;
+  color: #9cc9dc;
+  font-size: 10px;
+  line-height: 1.5;
+  padding: 1px 7px;
+}
 /* =========================================================
    SOURCES
    ========================================================= */
@@ -178,3 +194,20 @@
 }
 
 
+
+/* Source provenance labels stay compact and visually distinct from impact. */
+.source-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 4px;
+}
+.source-metadata > span,
+.credibility-badge {
+  border: 1px solid rgba(94, 179, 211, 0.24);
+  border-radius: 999px;
+  color: #9cc9dc;
+  font-size: 10px;
+  line-height: 1.5;
+  padding: 1px 7px;
+}
