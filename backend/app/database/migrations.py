@@ -668,6 +668,36 @@ def _m008_importance_alert_preferences(conn: sqlite3.Connection) -> None:
     add_column(conn, "providers", "consecutive_empty_runs", "INTEGER DEFAULT 0")
 
 
+def _m009_region_baselines(conn: sqlite3.Connection) -> None:
+    add_column(conn, "anomalies", "severity", "TEXT")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS region_baseline_samples (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            region TEXT NOT NULL,
+            bucket_kind TEXT NOT NULL CHECK(bucket_kind IN ('weekday','month')),
+            bucket_key TEXT NOT NULL,
+            sample_date TEXT NOT NULL,
+            observed_count REAL NOT NULL,
+            sample_event_ids TEXT NOT NULL DEFAULT '[]',
+            UNIQUE(region,bucket_kind,bucket_key,sample_date)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS region_baselines (
+            region TEXT NOT NULL,
+            bucket_kind TEXT NOT NULL,
+            bucket_key TEXT NOT NULL,
+            sample_count INTEGER NOT NULL DEFAULT 0,
+            mean REAL NOT NULL DEFAULT 0,
+            m2 REAL NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY(region,bucket_kind,bucket_key)
+        )
+    """)
+    add_index(conn, "idx_region_baseline_sample_date", "region_baseline_samples(sample_date)")
+    add_index(conn, "idx_region_baselines_region", "region_baselines(region,bucket_kind)")
+
+
 MIGRATIONS: list[Migration] = [
     Migration(1, "bootstrap_schema", _m001_bootstrap),
     Migration(2, "article_provenance", _m002_article_provenance),
@@ -677,6 +707,7 @@ MIGRATIONS: list[Migration] = [
     Migration(6, "relationship_foreign_keys", _m006_foreign_keys, backup=True),
     Migration(7, "source_credibility", _m007_source_credibility),
     Migration(8, "importance_and_alert_preferences", _m008_importance_alert_preferences),
+    Migration(9, "region_baselines", _m009_region_baselines),
 ]
 
 LATEST_VERSION = max(m.version for m in MIGRATIONS)

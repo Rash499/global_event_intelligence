@@ -182,7 +182,11 @@ Event details display a source-credibility badge and per-publisher catalog label
 
 Alerts require recent, important, high/critical events and use per-event and global cooldowns. Signed-in users can select critical-only or critical-and-high sensitivity in Alerts. Tier 3+/undeclared news sources require non-keyword ML/LLM classification; structured observations remain eligible from their provider evidence. See [docs/alert-gates.md](docs/alert-gates.md).
 
-## 8. Optional local AI with Ollama
+## 8. Anomaly baselines
+
+Anomaly results retain the coverage-adequacy guard and now include weekday/month-matched 90-day regional baselines, a ten-sample cold-start minimum, z-score severity bands, and a reporting-term spike check. The signal describes stored reporting activity only. See [docs/anomaly-baselines.md](docs/anomaly-baselines.md).
+
+## 9. Optional local AI with Ollama
 
 Install Ollama separately, then pull a model, for example:
 
@@ -206,7 +210,7 @@ Restart FastAPI.
 
 The ingestion service will ask the local model to classify/summarize candidate articles. If Ollama is unavailable, the application automatically falls back to deterministic analysis, so the MVP still works.
 
-## 9. API examples
+## 10. API examples
 
 Latest events:
 ```text
@@ -236,7 +240,7 @@ GET  /api/ai/suggestions
 POST /api/ai/index        {"force": false, "limit": 300}
 ```
 
-## 10. Global Intelligence Assistant (Phase 3)
+## 11. Global Intelligence Assistant (Phase 3)
 
 The assistant answers questions strictly from indexed platform data. Every answer
 carries numbered evidence records and source links that were verified against the

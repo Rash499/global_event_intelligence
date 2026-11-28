@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from app.intelligence.source_catalog import credibility_score, source_metadata
 from app.intelligence.importance import calculate_importance_score
 from app.alerts.evaluator import alert_gate_decision
+from app.intelligence.anomaly import WelfordBaseline
 
 
 def test_unknown_source_is_not_treated_as_tier_four():
@@ -103,3 +104,25 @@ def test_global_cooldown_and_critical_override_only_for_high():
     assert alert_gate_decision(_alert_event(now, severity=7), now=now, last_global_alert_at=recent_alert, last_global_severity=7)[1] == "global_cooldown"
     assert alert_gate_decision(_alert_event(now, severity=9), now=now, last_global_alert_at=recent_alert, last_global_severity=7)[0] is True
     assert alert_gate_decision(_alert_event(now, severity=9), now=now, last_global_alert_at=recent_alert, last_global_severity=9)[1] == "global_cooldown"
+
+
+def test_welford_weekday_buckets_capture_seasonality_and_cold_start():
+    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    monday = WelfordBaseline()
+    tuesday = WelfordBaseline()
+    for week in range(12):
+        monday.add(start + timedelta(days=week * 7), 8 + (week % 2), now=start + timedelta(days=week * 7))
+        tuesday.add(start + timedelta(days=week * 7 + 1), 1 + (week % 2), now=start + timedelta(days=week * 7 + 1))
+    assert monday.count == 12 and tuesday.count == 12
+    assert monday.mean > tuesday.mean
+    assert monday.z_score(20) is not None
+    assert WelfordBaseline().z_score(100) is None
+
+
+def test_welford_baseline_discards_samples_older_than_ninety_days():
+    now = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    baseline = WelfordBaseline()
+    for day in range(120):
+        stamp = now - timedelta(days=day)
+        baseline.add(stamp, day, now=now)
+    assert baseline.count == 90
