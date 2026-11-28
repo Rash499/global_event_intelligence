@@ -78,7 +78,9 @@ class RssProvider(SourceProvider):
         errors: list[str] = []
 
         async with async_client() as client:
-            semaphore = asyncio.Semaphore(4)
+            # Feeds live on distinct hosts; 8-way concurrency keeps the
+            # provider's cost near its slowest single feed.
+            semaphore = asyncio.Semaphore(8)
 
             async def fetch_feed(name: str, spec: dict) -> list[dict]:
                 async with semaphore:
@@ -349,48 +351,61 @@ class GoogleNewsProvider(SourceProvider):
         hl = self.config.google_news_language
         gl = self.config.google_news_country
         ceid = f"{gl}:{hl.split('-')[0]}"
-        results: list[dict] = []
         errors: list[str] = []
 
+        # The seven topic queries are independent; running them
+        # sequentially made this provider cost the *sum* of seven RSS
+        # round-trips. Fetch with bounded concurrency instead (results
+        # stay in query order; a failed query is recorded, not fatal,
+        # exactly as before).
         async with async_client() as client:
-            for label, query in GOOGLE_NEWS_QUERIES.items():
-                try:
-                    response = await client.get(
-                        GOOGLE_NEWS_URL,
-                        params={"q": query, "hl": hl, "gl": gl, "ceid": ceid},
-                    )
-                    response.raise_for_status()
-                    feed = feedparser.parse(bounded_text(response))
-                except (httpx.HTTPError, ValueError) as exc:
-                    message = f"{label}: {type(exc).__name__}: {exc}"
-                    errors.append(message)
-                    logger.warning("[GOOGLE NEWS] query %s failed: %s", label, message)
-                    continue
+            semaphore = asyncio.Semaphore(4)
 
-                for entry in feed.entries[:per_query]:
-                    link = entry.get("link")
-                    if not link:
-                        continue
-                    source = entry.get("source")
-                    publisher = source.get("title") if isinstance(source, dict) else None
-                    results.append(
-                        {
-                            "title": clean_text(entry.get("title"), 400) or "Untitled",
-                            "url": link,
-                            "source": f"Google News: {publisher or label}",
-                            "publisher": publisher,
-                            "published_at": to_utc_iso(parse_timestamp(entry.get("published"))),
-                            "description": clean_text(entry.get("summary"), 4000),
-                            "image_url": None,
-                            "raw_metadata": {"query": label, "publisher": publisher},
-                        }
-                    )
+            async def fetch_query(label: str, query: str) -> list[dict]:
+                async with semaphore:
+                    try:
+                        response = await client.get(
+                            GOOGLE_NEWS_URL,
+                            params={"q": query, "hl": hl, "gl": gl, "ceid": ceid},
+                        )
+                        response.raise_for_status()
+                        feed = feedparser.parse(bounded_text(response))
+                    except (httpx.HTTPError, ValueError) as exc:
+                        message = f"{label}: {type(exc).__name__}: {exc}"
+                        errors.append(message)
+                        logger.warning("[GOOGLE NEWS] query %s failed: %s", label, message)
+                        return []
+
+                    records = []
+                    for entry in feed.entries[:per_query]:
+                        link = entry.get("link")
+                        if not link:
+                            continue
+                        source = entry.get("source")
+                        publisher = source.get("title") if isinstance(source, dict) else None
+                        records.append(
+                            {
+                                "title": clean_text(entry.get("title"), 400) or "Untitled",
+                                "url": link,
+                                "source": f"Google News: {publisher or label}",
+                                "publisher": publisher,
+                                "published_at": to_utc_iso(parse_timestamp(entry.get("published"))),
+                                "description": clean_text(entry.get("summary"), 4000),
+                                "image_url": None,
+                                "raw_metadata": {"query": label, "publisher": publisher},
+                            }
+                        )
+                    return records
+
+            batches = await asyncio.gather(
+                *(fetch_query(label, query) for label, query in GOOGLE_NEWS_QUERIES.items())
+            )
 
         if errors and len(errors) == len(GOOGLE_NEWS_QUERIES):
             raise RuntimeError("; ".join(errors[:3]))
 
         self.errors = errors
-        return results
+        return [record for batch in batches for record in batch]
 
     def health(self, stored=None):
         health = super().health(stored)
