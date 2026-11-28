@@ -72,10 +72,8 @@ const COVERAGE_TONE = { none: "danger", sparse: "warn", partial: "warn", good: "
 /**
  * Country intelligence.
  *
- * The backend deliberately does not return one "risk score". It returns
- * per-dimension counts and severity averages plus a coverage caveat, because a
- * country with no collected reporting would otherwise look safe. The UI keeps
- * that structure instead of collapsing it.
+ * The backend returns a transparent composite indicator alongside its source
+ * dimensions and coverage caveat; the score is descriptive, not predictive.
  */
 export default function CountriesView({ initialSelection, onSelectEvent }) {
   const [selected, setSelected] = useState(initialSelection?.country ? initialSelection.country : initialSelection || null);
@@ -99,8 +97,7 @@ export default function CountriesView({ initialSelection, onSelectEvent }) {
           <p className="eyebrow">COUNTRY INTELLIGENCE</p>
           <h1>Country indicators</h1>
           <p className="ws-subtitle">
-            Descriptive statistics over collected reporting, grouped by taxonomy category. Not a forecast, and not a
-            composite risk index.
+            A transparent country-instability indicator over collected reporting, with source coverage shown alongside it. Descriptive only; not a forecast.
           </p>
         </div>
         <div className="ws-head-meta">
@@ -204,6 +201,22 @@ export default function CountriesView({ initialSelection, onSelectEvent }) {
                   <strong>Coverage: {coverage?.level || "unknown"}.</strong> {coverage?.note}
                 </p>
               </Panel>
+
+              {risk.data.risk_score && (
+                <Panel title="Instability score" eyebrow={risk.data.risk_score.level?.toUpperCase()}>
+                  <div className="ws-stat-grid ws-stat-grid-compact">
+                    <Stat label="Combined score" value={`${formatNumber(risk.data.risk_score.score, 1)}/100`} hint={risk.data.risk_score.formula} />
+                    <Stat label="Static baseline" value={risk.data.risk_score.baseline?.score} hint={risk.data.risk_score.baseline?.source} />
+                    <Stat label="Event score" value={risk.data.risk_score.event_score} />
+                  </div>
+                  <p className="ws-muted ws-small">Components: unrest {formatNumber(risk.data.risk_score.components?.unrest, 1)}, conflict {formatNumber(risk.data.risk_score.components?.conflict, 1)}, security {formatNumber(risk.data.risk_score.components?.security, 1)}, information {formatNumber(risk.data.risk_score.components?.information, 1)}.</p>
+                  <p className="ws-muted ws-small">Provider boosts: {Object.entries(risk.data.risk_score.boosts || {}).map(([name, item]) => `${name.replace(/_/g, " ")} +${formatNumber(item.score, 1)}/${item.cap}`).join(" · ")}. Floors applied: {(risk.data.risk_score.floors_applied || []).join(", ") || "none (supporting providers not registered)"}.</p>
+                  {risk.data.risk_score.coverage?.warning && <p className="ws-coverage-note tone-warn"><strong>Coverage warning.</strong> {risk.data.risk_score.coverage.warning}</p>}
+                  <Explain summary="Formula and limitations">
+                    <p className="ws-muted ws-small">Baseline weight 40%; event score weight 60%. Event components use unrest 25%, conflict 30%, security 20%, and information 25%. Provider boosts are individually capped; the result is clamped to 0–100. No predictive claim is implied.</p>
+                  </Explain>
+                </Panel>
+              )}
 
               {(risk.data.active_signals || []).length > 0 && (
                 <Panel title="Active signals" eyebrow="REPORTING CATEGORIES PRESENT">

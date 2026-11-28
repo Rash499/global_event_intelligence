@@ -4,6 +4,7 @@ from app.intelligence.source_catalog import credibility_score, source_metadata
 from app.intelligence.importance import calculate_importance_score
 from app.alerts.evaluator import alert_gate_decision
 from app.intelligence.anomaly import WelfordBaseline
+from app.intelligence.country_risk import calculate_country_risk
 
 
 def test_unknown_source_is_not_treated_as_tier_four():
@@ -126,3 +127,21 @@ def test_welford_baseline_discards_samples_older_than_ninety_days():
         stamp = now - timedelta(days=day)
         baseline.add(stamp, day, now=now)
     assert baseline.count == 90
+
+
+def test_country_score_formula_and_coverage_warning():
+    result = calculate_country_risk("XX", [], 0, 0, {"countries": {}, "default": 20})
+    assert result["score"] == 8.0
+    assert result["level"] == "Low"
+    assert result["coverage"]["warning"]
+
+
+def test_country_provider_boosts_are_capped_and_components_are_exposed():
+    events = [{"category": "armed_conflict", "severity": 8, "provider_keys": "usgs,firms,gdacs,eonet,reliefweb,who"} for _ in range(20)]
+    result = calculate_country_risk("AA", events, 40, 12, {"countries": {}, "default": 35})
+    assert result["components"]["conflict"] > 0
+    assert result["boosts"]["usgs_earthquakes"]["score"] <= 8
+    assert result["boosts"]["firms_wildfires"]["score"] <= 8
+    assert result["boosts"]["disasters"]["score"] <= 8
+    assert result["boosts"]["humanitarian"]["score"] <= 6
+    assert result["boosts"]["outbreaks"]["score"] <= 6

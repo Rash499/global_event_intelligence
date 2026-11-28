@@ -186,7 +186,11 @@ Alerts require recent, important, high/critical events and use per-event and glo
 
 Anomaly results retain the coverage-adequacy guard and now include weekday/month-matched 90-day regional baselines, a ten-sample cold-start minimum, z-score severity bands, and a reporting-term spike check. The signal describes stored reporting activity only. See [docs/anomaly-baselines.md](docs/anomaly-baselines.md).
 
-## 9. Optional local AI with Ollama
+## 9. Country instability indicator
+
+Country details now expose a weighted 0–100 indicator with an explicit baseline, event components, capped free-provider boosts, floors, and data coverage warning. The underlying counts remain available. See [docs/country-instability-score.md](docs/country-instability-score.md).
+
+## 10. Optional local AI with Ollama
 
 Install Ollama separately, then pull a model, for example:
 
@@ -210,7 +214,7 @@ Restart FastAPI.
 
 The ingestion service will ask the local model to classify/summarize candidate articles. If Ollama is unavailable, the application automatically falls back to deterministic analysis, so the MVP still works.
 
-## 10. API examples
+## 11. API examples
 
 Latest events:
 ```text
@@ -240,7 +244,7 @@ GET  /api/ai/suggestions
 POST /api/ai/index        {"force": false, "limit": 300}
 ```
 
-## 11. Global Intelligence Assistant (Phase 3)
+## 12. Global Intelligence Assistant (Phase 3)
 
 The assistant answers questions strictly from indexed platform data. Every answer
 carries numbered evidence records and source links that were verified against the

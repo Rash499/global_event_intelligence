@@ -30,6 +30,7 @@ from ..intelligence.taxonomy import (
     taxonomy_payload,
 )
 from ..intelligence.geolocation import COUNTRY_BY_CODE, coordinate_for_country
+from ..intelligence.country_risk import calculate_country_risk
 from .auth import get_optional_user
 
 router = APIRouter(prefix="/api", tags=["intelligence"])
@@ -361,11 +362,11 @@ def country_risk(
     country_code: str,
     days: int = Query(30, ge=1, le=365),
 ):
-    """Explainable country indicators.
+    """Return a transparent composite indicator with component coverage notes.
 
-    Deliberately *not* a single "risk score". Each dimension is reported with
-    its input events, its own coverage caveat and the reporting volume that
-    supports it, because a country with little coverage must not look safe.
+    The score is descriptive over ingested records, not a forecast. The response
+    retains the underlying indicators and a warning whenever input coverage is
+    missing or sparse.
     """
     code = country_code.upper()
     if code not in COUNTRY_BY_CODE:
@@ -379,7 +380,7 @@ def country_risk(
             for row in conn.execute(
                 """
                 SELECT id, title, category, subcategory, severity, severity_label,
-                       confidence, event_state, occurred_at, priority_score
+                       confidence, event_state, occurred_at, priority_score, provider_keys
                 FROM events
                 WHERE country_code = ?
                   AND julianday(COALESCE(occurred_at, event_time, created_at)) >= julianday(?)
@@ -458,6 +459,7 @@ def country_risk(
     finally:
         conn.close()
 
+    country_score = calculate_country_risk(code, rows, article_count, publisher_count)
     by_day: dict[str, dict] = {}
     for row in timeline_rows:
         day = by_day.setdefault(
@@ -571,16 +573,17 @@ def country_risk(
         "articles": article_count,
         "publishers": publisher_count,
         "coverage": {"level": coverage_level, "note": coverage_note},
+        "risk_score": country_score,
         "dimensions": dimensions,
         "movement": movement,
         "timeline": {"window_days": 7, "days": timeline_days},
         "active_signals": active_signals,
         "recent_events": rows[:20],
         "methodology": (
-            "Indicators are counts and severity averages of stored events within the "
-            "period, grouped by taxonomy category. They are descriptive statistics over "
-            "collected reporting, not an empirical risk index, and they inherit the "
-            "collection coverage shown above."
+            "The composite instability indicator is 0.40 × curated baseline + 0.60 × eventScore; "
+            "eventScore is 0.25 × unrest + 0.30 × conflict + 0.20 × security + 0.25 × information. "
+            "Provider boosts are shown separately, capped, and the result is clamped to 0–100. "
+            "Underlying indicators are descriptive statistics over collected reporting and inherit the coverage caveat."
         ),
         "limitations": [
             "Countries with less collected reporting will show fewer events regardless of the real situation.",

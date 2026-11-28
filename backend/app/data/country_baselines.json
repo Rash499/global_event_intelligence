@@ -1,0 +1,11 @@
+{
+  "source_note": "Curated static starting points for long-run context; not a live provider, not a forecast, review before use in public-facing policy.",
+  "version": 1,
+  "default": 35,
+  "countries": {
+    "AF": 78, "CD": 68, "ET": 58, "HT": 52, "IR": 55, "IQ": 58,
+    "IL": 56, "LB": 48, "LY": 60, "MM": 70, "NG": 50, "PK": 47,
+    "PS": 67, "RU": 54, "SO": 76, "SS": 73, "SD": 72, "SY": 77,
+    "UA": 62, "YE": 79
+  }
+}
