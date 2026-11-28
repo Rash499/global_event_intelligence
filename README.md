@@ -190,7 +190,11 @@ Anomaly results retain the coverage-adequacy guard and now include weekday/month
 
 Country details now expose a weighted 0–100 indicator with an explicit baseline, event components, capped free-provider boosts, floors, and data coverage warning. The underlying counts remain available. See [docs/country-instability-score.md](docs/country-instability-score.md).
 
-## 10. Optional local AI with Ollama
+## 10. Geographic convergence
+
+`/api/convergence` compares country-level taxonomy-group counts across windows; `/api/spatial-convergence` instead bins geolocated events into 1° cells and identifies 3+ category co-location over 24 hours. MapView lists qualifying cells, and alert creation remains subject to the noise gates. See [docs/geographic-convergence.md](docs/geographic-convergence.md).
+
+## 11. Optional local AI with Ollama
 
 Install Ollama separately, then pull a model, for example:
 
@@ -214,7 +218,7 @@ Restart FastAPI.
 
 The ingestion service will ask the local model to classify/summarize candidate articles. If Ollama is unavailable, the application automatically falls back to deterministic analysis, so the MVP still works.
 
-## 11. API examples
+## 12. API examples
 
 Latest events:
 ```text
@@ -244,7 +248,7 @@ GET  /api/ai/suggestions
 POST /api/ai/index        {"force": false, "limit": 300}
 ```
 
-## 12. Global Intelligence Assistant (Phase 3)
+## 13. Global Intelligence Assistant (Phase 3)
 
 The assistant answers questions strictly from indexed platform data. Every answer
 carries numbered evidence records and source links that were verified against the

@@ -835,6 +835,23 @@ def convergence(
     }
 
 
+@router.get("/spatial-convergence")
+def spatial_convergence(window_hours: int = Query(24, ge=1, le=24), limit: int = Query(100, ge=1, le=500)):
+    """Find 1-degree cells with at least three distinct event categories."""
+    from ..intelligence.convergence import spatial_convergence_cells
+
+    now = datetime.now(timezone.utc)
+    conn = get_connection()
+    try:
+        items = spatial_convergence_cells(conn, now=now, window_hours=window_hours)
+    finally:
+        conn.close()
+    items = items[:limit]
+    for item in items:
+        item.pop("representative_event", None)
+    return {"generated_at": _iso(now), "window_hours": window_hours, "cell_size_degrees": 1, "count": len(items), "items": items}
+
+
 # ----------------------------------------------------------------------
 # Anomalies
 # ----------------------------------------------------------------------

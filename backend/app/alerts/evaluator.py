@@ -112,8 +112,6 @@ def evaluate_all_rules(limit: int = 400, *, now: datetime | None = None) -> int:
     created = 0
     with write_connection() as conn:
         rules = [dict(r) for r in conn.execute("SELECT * FROM alert_rules WHERE enabled = 1").fetchall()]
-        if not rules:
-            return 0
         events = [dict(r) for r in conn.execute("""
             SELECT id, title, summary, category, subcategory, country_code, severity,
                    confidence, event_state, escalation_trend, classification_method,
@@ -160,4 +158,27 @@ def evaluate_all_rules(limit: int = 400, *, now: datetime | None = None) -> int:
                     conn.execute("INSERT INTO alert_event_suppressions(event_id,suppressed_until,severity,created_at) VALUES(?,?,?,?) ON CONFLICT(event_id) DO UPDATE SET suppressed_until=excluded.suppressed_until,severity=excluded.severity,created_at=excluded.created_at", (event["id"], (now_dt + timedelta(minutes=30)).isoformat(), "critical" if float(event.get("severity") or 0) >= 8.5 else "high", now_iso))
                     last_global_at, last_global_severity = now_dt, event.get("severity")
             conn.execute("UPDATE alert_rules SET last_evaluated_at=? WHERE id=?", (now_iso, rule["id"]))
+
+        # Spatial convergence is a system signal, linked to its newest sample
+        # event so it can use the same recency, severity and cooldown gates.
+        from ..intelligence.convergence import spatial_convergence_cells
+        for cell in spatial_convergence_cells(conn, now=now_dt, window_hours=24):
+            representative = cell["representative_event"]
+            event_id = representative["id"]
+            suppression = conn.execute("SELECT suppressed_until FROM alert_event_suppressions WHERE event_id=?", (event_id,)).fetchone()
+            event_alert_at = _parse_time(suppression["suppressed_until"]) - timedelta(minutes=30) if suppression else None
+            source = conn.execute("SELECT COUNT(*) AS n,MIN(a.source_tier) AS tier FROM event_articles ea JOIN articles a ON a.id=ea.article_id WHERE ea.event_id=?", (event_id,)).fetchone()
+            gate_event = {**representative, "severity": 9 if cell["severity"] == "critical" else 7, "importance_score": max(float(representative.get("importance_score") or 0), float(cell["score"]))}
+            allowed, gate = alert_gate_decision(gate_event, now=now_dt, last_event_alert_at=event_alert_at, last_global_alert_at=last_global_at, last_global_severity=last_global_severity, source_tier=source["tier"] or "undeclared", has_news_source=bool(source["n"]))
+            if not allowed:
+                continue
+            country_name = (cell.get("nearest_country") or {}).get("name") or "unknown region"
+            title = f"Spatial convergence near {country_name}"
+            conn.execute("""
+                INSERT INTO alerts(rule_id,event_id,triggered_at,status,severity,confidence,title,reason,evidence)
+                VALUES(NULL,?,?, 'new', ?, ?, ?, 'Spatial convergence', ?)
+            """, (event_id, now_iso, gate_event["severity"], representative.get("confidence"), title, json.dumps({"reasons":["Three or more distinct event categories in one 1-degree cell during the last 24 hours", f"Noise gate result: {gate}"], "cell":cell["cell"], "score":cell["score"], "severity":cell["severity"], "event_types":cell["event_types"], "sample_event_ids":cell["sample_event_ids"], "nearest_country":cell.get("nearest_country")})))
+            conn.execute("INSERT INTO alert_event_suppressions(event_id,suppressed_until,severity,created_at) VALUES(?,?,?,?) ON CONFLICT(event_id) DO UPDATE SET suppressed_until=excluded.suppressed_until,severity=excluded.severity,created_at=excluded.created_at", (event_id, (now_dt+timedelta(minutes=30)).isoformat(), cell["severity"], now_iso))
+            created += 1
+            last_global_at, last_global_severity = now_dt, gate_event["severity"]
     return created

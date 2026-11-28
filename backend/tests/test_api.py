@@ -258,6 +258,28 @@ def test_convergence_requires_multiple_escalating_groups(client, conn):
     assert "critical_severity" in lk_groups["natural_weather"]["reasons"]
 
 
+def test_spatial_convergence_bins_three_categories(client, conn):
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    for title, category in [("Flood observation", "natural_disaster"), ("Protest observation", "protest_unrest"), ("Clash observation", "armed_conflict")]:
+        conn.execute("""
+            INSERT INTO events(title,category,country,country_code,latitude,longitude,severity,occurred_at,event_time,created_at,importance)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?)
+        """, (title, category, "Testland", "LK", 7.2, 79.8, 7, now, now, now, 8))
+    body = client.get("/api/spatial-convergence").json()
+    assert body["count"] == 1
+    item = body["items"][0]
+    assert item["distinct_event_types"] == 3
+    assert item["score"] == 81
+    assert item["severity"] == "high"
+    assert item["nearest_country"]
+    from app.alerts.evaluator import evaluate_all_rules
+    assert evaluate_all_rules() == 1
+    alert = client.get("/api/alerts").json()["items"][0]
+    assert alert["reason"] == "Spatial convergence"
+    assert alert["evidence"]["cell"] == item["cell"]
+
+
 def test_country_without_reporting_is_not_described_as_safe(client, seeded):
     body = client.get("/api/countries/NO/risk").json()
     assert body["coverage"]["level"] == "none"
