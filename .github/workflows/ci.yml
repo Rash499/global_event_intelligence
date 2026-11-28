@@ -139,4 +139,6 @@ jobs:
         env:
           CI: "true"
           DEMO_DATA_ENABLED: "true"
-        run: npm run test:e2e
+        # The github reporter turns failures into check-run annotations,
+        # so the failing expectation is visible without downloading logs.
+        run: npm run test:e2e -- --reporter=github

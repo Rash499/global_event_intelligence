@@ -257,8 +257,20 @@ def _recompute_event_statistics(conn, event_id: int) -> dict:
 
     independence = assess_independence(articles, settings.syndication_domain_set)
 
-    # Provenance and statistics
+    # Provenance and statistics. Structured observations have no articles,
+    # so keep the provider attribution stored at upsert time; overwriting
+    # it with an empty join would erase provider_keys (breaking structured
+    # dedupe, provider boosts and advisory/conflict-history floors).
     providers = sorted({a["provider"] for a in articles if a.get("provider")})
+    if not providers and event["provider_keys"]:
+        providers = [
+            key.strip()
+            for key in str(event["provider_keys"]).split(",")
+            if key.strip()
+        ]
+    source_domains = ", ".join(independence.publisher_families)
+    if not source_domains and event["source_domains"]:
+        source_domains = event["source_domains"]
     published = [a["published_at"] for a in articles if a.get("published_at")]
     first_seen = min(
         [a.get("first_seen_at") or a.get("published_at") for a in articles if a.get("first_seen_at") or a.get("published_at")],
@@ -326,7 +338,7 @@ def _recompute_event_statistics(conn, event_id: int) -> dict:
             assessment["corroboration_level"],
             first_seen,
             last_seen,
-            ", ".join(independence.publisher_families),
+            source_domains,
             ", ".join(providers),
             assessment["severity"]["score"],
             assessment["severity"]["label"],

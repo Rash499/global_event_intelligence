@@ -37,7 +37,7 @@ describe("Navbar", () => {
 
   it("the brand button goes home", async () => {
     const { user, onOverview } = setup();
-    await user.click(screen.getByRole("button", { name: "Global Event Intelligence home" }));
+    await user.click(screen.getByRole("button", { name: /Global Intelligence/ }));
     expect(onOverview).toHaveBeenCalled();
   });
 
@@ -68,7 +68,7 @@ describe("Navbar", () => {
 
   it("opens the command palette", async () => {
     const { user, onOpenSearch } = setup();
-    await user.click(screen.getByRole("button", { name: /Search events, countries and sources/ }));
+    await user.click(screen.getByRole("button", { name: "Search⌘K" }));
     expect(onOpenSearch).toHaveBeenCalledTimes(1);
   });
 

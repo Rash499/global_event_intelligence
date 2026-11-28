@@ -6,6 +6,75 @@ from pathlib import Path
 
 BASELINE_PATH = Path(__file__).resolve().parents[1] / "data" / "country_baselines.json"
 
+# Travel-advisory floors (Phase 8): a US State Department Level 4
+# ("Do Not Travel") assessment floors the index at 55 and Level 3
+# ("Reconsider Travel") at 40, so an official warning cannot be
+# averaged away by thin news coverage. Levels 1-2 set no floor.
+ADVISORY_FLOORS = {4: 55.0, 3: 40.0}
+
+
+def _attributes(event: dict) -> dict:
+    raw = event.get("data_sources")
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str) and raw:
+        try:
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, dict) else {}
+        except ValueError:
+            return {}
+    return {}
+
+
+def _floors(events: list[dict]) -> tuple[float, list[str]]:
+    """Structural floors from ingested Phase-8 observations.
+
+    Only values actually ingested count: no advisory on file means no
+    advisory floor, and no UCDP record means no conflict-history floor.
+    Returns (floor_value, human-readable applied floors).
+    """
+    applied: list[str] = []
+    floor = 0.0
+
+    advisory_levels = [
+        _attributes(event).get("advisory_level")
+        for event in events
+        if "state_advisories" in str(event.get("provider_keys") or "").lower()
+    ]
+    advisory_levels = [int(level) for level in advisory_levels if isinstance(level, (int, float))]
+    if advisory_levels:
+        level = max(advisory_levels)
+        if level in ADVISORY_FLOORS:
+            floor = max(floor, ADVISORY_FLOORS[level])
+            applied.append(
+                f"travel_advisory: floor {ADVISORY_FLOORS[level]:.0f} "
+                f"(US State Department Level {level})"
+            )
+
+    ucdp_events = [
+        event
+        for event in events
+        if "ucdp" in str(event.get("provider_keys") or "").lower()
+    ]
+    if ucdp_events:
+        fatalities = sum(
+            float(_attributes(event).get("fatalities") or 0) for event in ucdp_events
+        )
+        if fatalities >= 100:
+            value, basis = 45.0, f"UCDP records {fatalities:.0f} fatalities in the period"
+        elif fatalities >= 25 or len(ucdp_events) >= 10:
+            value, basis = 35.0, (
+                f"UCDP records {len(ucdp_events)} conflict events, "
+                f"{fatalities:.0f} fatalities in the period"
+            )
+        else:
+            value, basis = 0.0, ""
+        if value:
+            floor = max(floor, value)
+            applied.append(f"conflict_history: floor {value:.0f} ({basis})")
+
+    return floor, applied
+
 
 def load_baselines() -> dict:
     return json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
@@ -65,9 +134,11 @@ def calculate_country_risk(country_code: str, events: list[dict], article_count:
     for key, cap in caps.items():
         boosts[key] = min(cap, counts[key] * 2.0)
     combined_before_adjustments = 0.40 * baseline + 0.60 * event_score
-    floors_applied = []  # Conflict-history and travel-advisory providers are not yet registered.
+    # Floors (Phase 8): ingested travel advisories and UCDP conflict
+    # history can raise — never lower — the combined score.
+    floor_value, floors_applied = _floors(events)
     total_boost = sum(boosts.values())
-    combined = max(0.0, min(100.0, combined_before_adjustments + total_boost))
+    combined = max(0.0, min(100.0, max(combined_before_adjustments + total_boost, floor_value)))
     level = risk_level(combined)
     coverage = "none" if article_count == 0 and not events else "sparse" if article_count < 5 else "partial" if article_count < 25 else "good"
     missing = []

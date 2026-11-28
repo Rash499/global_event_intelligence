@@ -416,7 +416,8 @@ def country_risk(
             for row in conn.execute(
                 """
                 SELECT id, title, category, subcategory, severity, severity_label,
-                       confidence, event_state, occurred_at, priority_score, provider_keys
+                       confidence, event_state, occurred_at, priority_score, provider_keys,
+                       data_sources
                 FROM events
                 WHERE country_code = ?
                   AND julianday(COALESCE(occurred_at, event_time, created_at)) >= julianday(?)

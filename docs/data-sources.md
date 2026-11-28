@@ -17,8 +17,25 @@ All current default-path sources are free to access and require no paid API or s
 | CAP feeds | Free, but an operator must configure one or more feed URLs | Existing provider; no default list | Individual feed publishers' terms apply. |
 | ACLED | Account/license credentials; not a free default feed | Existing provider, disabled by default | Licensed terms; never enabled by default. |
 
-## Requested additions not included in this change
+## Phase-8 additions (registered providers)
 
-UCDP, UNHCR/HDX HAPI, OFAC downloads, State Department advisories, and Polymarket context are **not registered providers** in this implementation. This execution environment only permits outbound requests to GitHub/npm/PyPI hosts, so public endpoint reachability, current response formats, update cadence, redistribution terms, and for some sources registration/key requirements could not be verified. To avoid shipping speculative endpoints or implying verified coverage, these integrations are deferred. Revisit each from its official documentation, write offline fixtures from published schemas, and keep any key-dependent adapter disabled until configured.
+The integrations below were deferred by the earlier execution because
+endpoint reachability could not be verified from a network-restricted
+sandbox. They have since been implemented along exactly the revisit
+path named there — published schemas, offline fixtures, `unverified`
+until a real collection succeeds. Live reachability is still not
+claimed from development environments; the Providers page shows the
+honest status.
 
-Open-source GPS/GNSS interference feeds were likewise not added: no free, stable, attributable public source could be verified from the available network. The system does not infer jamming from unrelated event data.
+| Source | Free / key posture | Current status | License/terms posture |
+| --- | --- | --- | --- |
+| UCDP GED conflict events | Data free; API requires a **free access token** (registration) | Registered, **off by default**, `not_configured` until `UCDP_ACCESS_TOKEN` is set | UCDP terms apply; research dataset, cite Uppsala Conflict Data Program. Feeds conflict history and the country-risk conflict-history floor |
+| UNHCR population statistics | Free; no key | Registered, enabled, `unverified` live | UNHCR data terms; annual statistics stored as country-level displacement context, not incidents |
+| HDX HAPI | Free with a self-declared app identifier | **Not integrated** — UNHCR's keyless API covers the displacement need with fewer moving parts; HAPI remains a documented alternative | HDX terms would apply |
+| OFAC Consolidated List | Free public download; no key | Registered, enabled, `unverified` live | US Treasury public list; only per-country entry **counts** are stored — the list is not republished |
+| US State Dept travel advisories | Free public RSS; no key | Registered, enabled, `unverified` live | US government assessment, labelled as such wherever shown; Level 3/4 advisories floor the country instability index |
+| Polymarket (Gamma API) | Free; no key; read-only | Registered, **off by default** (opt-in context signal) | Market prices are participants' prices, stored with `is_our_prediction: false`; never presented as this platform's prediction |
+
+Open-source GPS/GNSS interference feeds were likewise not added: no
+free, stable, attributable public source could be verified. The system
+does not infer jamming from unrelated event data.

@@ -12,6 +12,12 @@
 .navbar-links {
   display: flex;
   align-items: center;
+  /* Must stay flex-start: app-shell.css sets justify-content:center, and
+     centered content in a horizontal scroll container overflows the
+     start edge where it is clipped and unreachable - the Overview/Map
+     links sat underneath the brand button at laptop widths, which is
+     what blocked the E2E smoke test's Map click. */
+  justify-content: flex-start;
   gap: 18px;
   flex: 1;
   min-width: 0;
