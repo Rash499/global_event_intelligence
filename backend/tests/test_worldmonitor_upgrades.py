@@ -6,12 +6,23 @@ from app.alerts.evaluator import alert_gate_decision
 from app.intelligence.anomaly import WelfordBaseline
 from app.intelligence.country_risk import calculate_country_risk
 from app.ingestion.registry import freshness_status, silent_zero_detected
+from app.ingestion.providers.news import RssProvider
+from app.intelligence.digest_cache import invalidate_snapshots, read_snapshot, write_snapshot
 
 
 def test_unknown_source_is_not_treated_as_tier_four():
     result = source_metadata("unlisted-independent.example")
     assert result["source_tier"] == "undeclared"
     assert result["state_affiliated"] is False
+
+
+def test_state_affiliated_feed_defaults_are_opt_in():
+    from types import SimpleNamespace
+    provider = RssProvider(config=SimpleNamespace(rss_include_state_affiliated=False))
+    assert "Al Jazeera" not in provider.feeds
+    assert "DW World" not in provider.feeds
+    opted_in = RssProvider(config=SimpleNamespace(rss_include_state_affiliated=True))
+    assert "Al Jazeera" in opted_in.feeds
 
 
 def test_catalog_marks_state_affiliation_and_research_region():
@@ -162,3 +173,14 @@ def test_provider_freshness_thresholds_with_fake_clock():
     assert freshness_status(enabled=True, last_status="healthy", last_success_at=stale_at, now=now, fresh_after=900, stale_after=7200, very_stale_after=21600)[0] == "stale"
     assert freshness_status(enabled=True, last_status="healthy", last_success_at=very_stale_at, now=now, fresh_after=900, stale_after=7200, very_stale_after=21600)[0] == "very_stale"
     assert silent_zero_detected(3) and not silent_zero_detected(2)
+
+
+def test_digest_snapshot_cache_age_and_invalidation(conn):
+    now = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    write_snapshot("test-digest", {"items": [1, 2]}, generated_at=now - timedelta(minutes=2))
+    cached = read_snapshot("test-digest", max_age_seconds=900, now=now)
+    assert cached["cache_age_seconds"] == 120
+    assert cached["items"] == [1, 2]
+    assert read_snapshot("test-digest", max_age_seconds=60, now=now) is None
+    invalidate_snapshots()
+    assert read_snapshot("test-digest", now=now) is None

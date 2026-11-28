@@ -63,7 +63,13 @@ class RssProvider(SourceProvider):
 
     def __init__(self, config=None, feeds: dict[str, dict] | None = None) -> None:
         super().__init__(config)
-        self.feeds = feeds or FEED_REGISTRY
+        if feeds is not None:
+            self.feeds = feeds
+        elif self.config.rss_include_state_affiliated:
+            self.feeds = FEED_REGISTRY
+        else:
+            state_affiliated = {"Al Jazeera", "DW World", "France 24", "NHK World"}
+            self.feeds = {name: spec for name, spec in FEED_REGISTRY.items() if name not in state_affiliated}
         self.feed_status: dict[str, dict] = {}
 
     async def fetch_raw(self) -> list[dict]:
