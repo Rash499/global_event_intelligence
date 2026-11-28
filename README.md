@@ -562,6 +562,12 @@ upstream service can theoretically provide.
 | NASA FIRMS | free `FIRMS_MAP_KEY` | implemented, needs external config | Reports `not_configured` until the key is set |
 | CAP alert feeds | feed URLs | implemented, needs external config | Validated on ingest |
 | ACLED | licensed account | implemented, **unverified** against a live account | Never enabled by default; Providers page marks it unverified |
+| UCDP conflict events | free access token | implemented, **unverified** live, off by default | Free GED data; the API needs a free token (`UCDP_ACCESS_TOKEN`) and reports `not_configured` without it. Feeds conflict events/fatalities and the country-risk conflict-history floor |
+| UNHCR displacement statistics | no | implemented, **unverified** live | Public population API; annual refugees/asylum-seekers per asylum country, stored as country-level context — never incident pins |
+| OFAC sanctions (country counts) | no | implemented, **unverified** live | Public Consolidated List download reduced to per-country entry counts; the list itself is not republished |
+| US travel advisories | no | implemented, **unverified** live | Public State Dept RSS; a US government assessment labelled as such; Level 3/4 advisories floor the country instability index |
+| Polymarket market context | no | implemented, **unverified** live, off by default | Read-only public API; opt-in context signal labelled "not a prediction by us" (`is_our_prediction: false`) |
+| GPS/GNSS jamming | — | **not implemented** (deliberate) | No free, stable, attributable public feed could be verified; jamming is never inferred from unrelated data |
 | Ollama (AI assessment) | local model | optional | Local only; the platform is fully functional without it |
 
 ### Cost and licensing

@@ -20,6 +20,13 @@ from .providers.base import (
     CollectionResult,
     SourceProvider,
 )
+from .providers.context import (
+    OfacSanctionsProvider,
+    PolymarketProvider,
+    StateAdvisoriesProvider,
+    UcdpProvider,
+    UnhcrProvider,
+)
 from .providers.news import GdeltProvider, GoogleNewsProvider, RssProvider
 from .providers.structured import (
     AcledProvider,
@@ -49,6 +56,11 @@ def build_providers() -> dict[str, SourceProvider]:
         FirmsWildfireProvider,
         CapAlertProvider,
         AcledProvider,
+        UcdpProvider,
+        UnhcrProvider,
+        OfacSanctionsProvider,
+        StateAdvisoriesProvider,
+        PolymarketProvider,
     ):
         provider = provider_class()
         providers[provider.key] = provider
@@ -69,6 +81,11 @@ INTERVAL_SETTING_BY_KEY = {
     "who": "scheduler_who_interval_seconds",
     "firms": "scheduler_firms_interval_seconds",
     "cap": "scheduler_cap_interval_seconds",
+    "ucdp": "scheduler_ucdp_interval_seconds",
+    "unhcr": "scheduler_unhcr_interval_seconds",
+    "ofac": "scheduler_ofac_interval_seconds",
+    "state_advisories": "scheduler_state_advisories_interval_seconds",
+    "polymarket": "scheduler_polymarket_interval_seconds",
 }
 
 

@@ -108,6 +108,11 @@ class Settings(BaseSettings):
     scheduler_who_interval_seconds: int = 3600
     scheduler_firms_interval_seconds: int = 3600
     scheduler_cap_interval_seconds: int = 600
+    scheduler_ucdp_interval_seconds: int = 86400
+    scheduler_unhcr_interval_seconds: int = 86400
+    scheduler_ofac_interval_seconds: int = 86400
+    scheduler_state_advisories_interval_seconds: int = 21600
+    scheduler_polymarket_interval_seconds: int = 3600
     scheduler_tick_seconds: int = 30
 
     # ------------------------------------------------------------------
@@ -166,6 +171,41 @@ class Settings(BaseSettings):
     acled_enabled: bool = False
     acled_access_token: str = ""
     acled_base_url: str = "https://api.acleddata.com/acled/read"
+
+    # UCDP Georeferenced Event Dataset API. The data is free, but the API
+    # requires a free access token (registration at ucdp.uu.se); the free
+    # GED downloads remain the no-token alternative. Off by default and
+    # reported as not_configured until UCDP_ACCESS_TOKEN is set.
+    ucdp_enabled: bool = False
+    ucdp_access_token: str = ""
+    ucdp_api_url: str = "https://ucdpapi.pcr.uu.se/api/gedevents/24.1"
+    ucdp_page_size: int = 500
+
+    # UNHCR population statistics API: public, no key required. Annual
+    # displacement figures (refugees / asylum-seekers by asylum country).
+    unhcr_enabled: bool = True
+    unhcr_api_url: str = "https://api.unhcr.org/population/v1/population/"
+    unhcr_max_countries: int = 60
+
+    # OFAC Consolidated List (non-SDN): public XML download, no key.
+    # Republished here only as per-country entry counts (sanctions
+    # pressure context), never as a republication of the list itself.
+    ofac_enabled: bool = True
+    ofac_list_url: str = "https://www.treasury.gov/ofac/downloads/cons/cons_prim.xml"
+    ofac_max_countries: int = 120
+
+    # US Department of State travel advisories: public RSS feed, no key.
+    # A US government assessment republished as context; it also feeds
+    # the country-risk advisory floor. Not this platform's assessment.
+    state_advisories_enabled: bool = True
+    state_advisories_feed_url: str = "https://travel.state.gov/_res/rss/TAsTWs.xml"
+
+    # Polymarket public Gamma API: keyless, read-only market context.
+    # Off by default: it is an opt-in context signal, and market prices
+    # are never presented as this platform's prediction.
+    polymarket_enabled: bool = False
+    polymarket_api_url: str = "https://gamma-api.polymarket.com/markets"
+    polymarket_max_markets: int = 40
 
     # ------------------------------------------------------------------
     # Intelligence assessment

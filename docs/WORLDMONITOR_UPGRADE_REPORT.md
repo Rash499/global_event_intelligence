@@ -40,3 +40,37 @@ Playwright configuration and tests were added and test discovery succeeds, but b
 1. Verify each Phase 8 source from official documentation and legal terms, then add deterministic parser fixtures before enabling any provider.
 2. Run the separate Playwright CI job and address any accessibility violations or environment-specific selectors it reveals.
 3. Review the static country baseline values before relying on them outside descriptive exploration; the score is explicitly coverage-limited and makes no predictive claim.
+
+## Addendum (2026-11-28): Phase 8 landed + one master bug fixed
+
+Follow-up 1 above is now done, on the `arena/54ac7212-global-event-intelligence`
+branch (this session), following the revisit path `docs/data-sources.md`
+named: published schemas, offline fixtures, `unverified` until a real
+collection succeeds.
+
+- **Registered providers** (`backend/app/ingestion/providers/context.py`):
+  UCDP conflict events (free data; free API token required, off by
+  default, `not_configured` without it), UNHCR displacement statistics
+  (keyless; annual, country-level), OFAC consolidated list reduced to
+  per-country entry counts (keyless; list not republished), US State
+  Department travel advisories (keyless RSS; labelled US government
+  assessment), Polymarket market context (keyless, read-only, **off by
+  default**, `is_our_prediction: false`). HDX HAPI was not integrated —
+  UNHCR covers the displacement need keylessly; GPS/GNSS jamming
+  remains skipped (no verifiable free, stable, attributable feed).
+- **Phase-5 floors activated**: ingested Level 4/3 advisories floor the
+  country instability index at 55/40 and UCDP conflict history floors
+  it at 45/35; with none ingested, `floors_applied` stays empty —
+  floors are never invented.
+- **Bug fixed**: `_recompute_event_statistics` overwrote `provider_keys`
+  (and `source_domains`) with empty values for structured events, which
+  have no articles. That broke structured upsert dedupe on the next run
+  and meant the Phase-5 provider boosts — keyed on `provider_keys` —
+  could never fire on real ingested data (unit tests passed raw dicts
+  and so did not catch it). Attribution is now preserved; a regression
+  test ingests twice and asserts one event with `provider_keys` intact.
+- **Verification after this change**: backend **291 passed** (was 282;
+  +9 Phase-8/regression tests), frontend **129 passed**, `tsc -b` and
+  production build passed, `ruff check` passed, Biome lint passed. No
+  migration was needed (migration head remains 011); no live endpoint
+  is claimed — every new provider reports `unverified`.
