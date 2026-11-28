@@ -44,8 +44,17 @@ def test_credentials_in_url_are_rejected():
         validate_url("http://user:pass@example.com/x")
 
 
-def test_public_url_is_allowed():
-    # Documented behaviour: the guard resolves and validates, it does not fetch.
+def test_public_url_is_allowed(monkeypatch):
+    # Keep URL validation hermetic: public DNS is simulated, never queried.
+    import socket
+
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda host, port, **kwargs: [
+            (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("93.184.216.34", 443))
+        ],
+    )
     assert validate_url("https://example.com/article") == "https://example.com/article"
 
 

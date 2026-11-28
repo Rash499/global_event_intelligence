@@ -1,4 +1,6 @@
 import axios from "axios";
+
+/** @typedef {import("./generatedApi").components["schemas"]["AlertRuleRequest"]} AlertRuleRequest */
 import { getAuthToken } from "./authSession.jsx";
 
 /**
@@ -319,6 +321,7 @@ export const getAlertRules = async () => {
   return response.data;
 };
 
+/** @param {AlertRuleRequest} rule */
 export const createAlertRule = async (rule) => {
   const response = await api.post("/alert-rules", rule);
   return response.data;

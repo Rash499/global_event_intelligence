@@ -50,6 +50,12 @@ def dashboard_overview(hours: int = Query(24, ge=1, le=168)):
     Everything here is counted from the database; nothing is estimated or
     hardcoded. Freshness fields let the UI show how old the picture is.
     """
+    from ..intelligence.digest_cache import read_snapshot, write_snapshot
+
+    cache_key = f"dashboard-overview:{hours}"
+    cached = read_snapshot(cache_key)
+    if cached is not None:
+        return cached
     now = datetime.now(timezone.utc)
     window_start = _iso(now - timedelta(hours=hours))
     day_start = _iso(now - timedelta(hours=24))
@@ -219,7 +225,7 @@ def dashboard_overview(hours: int = Query(24, ge=1, le=168)):
 
     from ..ingestion.registry import provider_status_summary
 
-    return {
+    response = {
         "generated_at": _iso(now),
         "window_hours": hours,
         "taxonomy_version": TAXONOMY_VERSION,
@@ -239,6 +245,9 @@ def dashboard_overview(hours: int = Query(24, ge=1, le=168)):
             "latest_event": totals["last_event_at"],
         },
     }
+    response["cache_age_seconds"] = 0
+    write_snapshot(cache_key, response, generated_at=now)
+    return response
 
 
 # ----------------------------------------------------------------------
@@ -393,6 +402,11 @@ def country_risk(
     code = country_code.upper()
     if code not in COUNTRY_BY_CODE:
         raise HTTPException(status_code=404, detail="Unknown country code")
+    from ..intelligence.digest_cache import read_snapshot, write_snapshot
+    cache_key = f"country-risk:{code}:{days}"
+    cached = read_snapshot(cache_key)
+    if cached is not None:
+        return cached
 
     since = _iso(datetime.now(timezone.utc) - timedelta(days=days))
     conn = get_connection()
@@ -586,11 +600,12 @@ def country_risk(
         )
         coverage_level = "good"
 
-    return {
+    generated_at = datetime.now(timezone.utc)
+    response = {
         "country_code": code,
         "country": COUNTRY_BY_CODE[code]["name"],
         "period_days": days,
-        "generated_at": _iso(datetime.now(timezone.utc)),
+        "generated_at": _iso(generated_at),
         "total_events": len(rows),
         "articles": article_count,
         "publishers": publisher_count,
@@ -613,6 +628,9 @@ def country_risk(
             "No forecasting or prediction is implied by these indicators.",
         ],
     }
+    response["cache_age_seconds"] = 0
+    write_snapshot(cache_key, response, generated_at=generated_at)
+    return response
 
 
 @router.get("/countries")
@@ -723,6 +741,11 @@ def convergence(
     carries the per-group counts and the highest-severity evidence events so
     the claim can be inspected rather than trusted.
     """
+    from ..intelligence.digest_cache import read_snapshot, write_snapshot
+    cache_key = f"convergence:{window_days}:{min_groups}:{limit}"
+    cached = read_snapshot(cache_key)
+    if cached is not None:
+        return cached
     now = datetime.now(timezone.utc)
     current_start = _iso(now - timedelta(days=window_days))
     previous_start = _iso(now - timedelta(days=window_days * 2))
@@ -847,19 +870,27 @@ def convergence(
     finally:
         conn.close()
 
-    return {
+    response = {
         "generated_at": _iso(now),
         "window_days": window_days,
         "min_groups": min_groups,
         "definition": CONVERGENCE_DEFINITION.format(min_groups=min_groups),
         "items": qualifying,
         "count": len(qualifying),
+        "cache_age_seconds": 0,
     }
+    write_snapshot(cache_key, response, generated_at=now)
+    return response
 
 
 @router.get("/spatial-convergence")
 def spatial_convergence(window_hours: int = Query(24, ge=1, le=24), limit: int = Query(100, ge=1, le=500)):
     """Find 1-degree cells with at least three distinct event categories."""
+    from ..intelligence.digest_cache import read_snapshot, write_snapshot
+    cache_key = f"spatial-convergence:{window_hours}:{limit}"
+    cached = read_snapshot(cache_key)
+    if cached is not None:
+        return cached
     from ..intelligence.convergence import spatial_convergence_cells
 
     now = datetime.now(timezone.utc)
@@ -871,7 +902,9 @@ def spatial_convergence(window_hours: int = Query(24, ge=1, le=24), limit: int =
     items = items[:limit]
     for item in items:
         item.pop("representative_event", None)
-    return {"generated_at": _iso(now), "window_hours": window_hours, "cell_size_degrees": 1, "count": len(items), "items": items}
+    response = {"generated_at": _iso(now), "window_hours": window_hours, "cell_size_degrees": 1, "count": len(items), "items": items, "cache_age_seconds": 0}
+    write_snapshot(cache_key, response, generated_at=now)
+    return response
 
 
 # ----------------------------------------------------------------------

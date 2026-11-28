@@ -3,11 +3,12 @@ from datetime import datetime, timedelta, timezone
 from app.intelligence.source_catalog import credibility_score, source_metadata
 from app.intelligence.importance import calculate_importance_score
 from app.alerts.evaluator import alert_gate_decision
-from app.intelligence.anomaly import WelfordBaseline
-from app.intelligence.country_risk import calculate_country_risk
+from app.intelligence.anomaly import WelfordBaseline, _keyword_spikes, severity_band_for_z
+from app.intelligence.country_risk import calculate_country_risk, risk_level
 from app.ingestion.registry import freshness_status, silent_zero_detected
 from app.ingestion.providers.news import RssProvider
 from app.intelligence.digest_cache import invalidate_snapshots, read_snapshot, write_snapshot
+from app.intelligence.convergence import spatial_score
 
 
 def test_unknown_source_is_not_treated_as_tier_four():
@@ -94,6 +95,7 @@ def test_alert_recency_gate_uses_fake_clock():
 def test_alert_importance_floor_and_severity_sensitivity():
     now = datetime(2026, 2, 1, tzinfo=timezone.utc)
     assert alert_gate_decision(_alert_event(now, importance_score=29), now=now)[1] == "importance_floor"
+    assert alert_gate_decision(_alert_event(now, severity=5), now=now)[1] == "severity_floor"
     assert alert_gate_decision(_alert_event(now, severity=7), now=now, sensitivity="critical_only")[1] == "user_sensitivity"
 
 
@@ -119,6 +121,13 @@ def test_global_cooldown_and_critical_override_only_for_high():
     assert alert_gate_decision(_alert_event(now, severity=9), now=now, last_global_alert_at=recent_alert, last_global_severity=9)[1] == "global_cooldown"
 
 
+def test_anomaly_z_score_bands():
+    assert severity_band_for_z(1.49) is None
+    assert severity_band_for_z(1.5) == "medium"
+    assert severity_band_for_z(2.0) == "high"
+    assert severity_band_for_z(3.0) == "critical"
+
+
 def test_welford_weekday_buckets_capture_seasonality_and_cold_start():
     start = datetime(2026, 1, 1, tzinfo=timezone.utc)
     monday = WelfordBaseline()
@@ -139,6 +148,32 @@ def test_welford_baseline_discards_samples_older_than_ninety_days():
         stamp = now - timedelta(days=day)
         baseline.add(stamp, day, now=now)
     assert baseline.count == 90
+
+
+def test_keyword_spike_compares_recent_terms_to_seven_day_history(conn):
+    now = datetime.now(timezone.utc)
+    for days_ago in range(2, 9):
+        stamp = (now - timedelta(days=days_ago)).isoformat()
+        conn.execute("INSERT INTO events(title,category,created_at) VALUES(?,?,?)", ("Tension escalation reported", "armed_conflict", stamp))
+    for _ in range(4):
+        stamp = now.isoformat()
+        conn.execute("INSERT INTO events(title,category,created_at) VALUES(?,?,?)", ("Tension escalation spreads", "armed_conflict", stamp))
+    spikes = _keyword_spikes(conn, now)
+    terms = {item["key"] for item in spikes}
+    assert "tension" in terms
+    assert "escalation" in terms
+
+
+def test_spatial_convergence_score_and_critical_thresholds():
+    assert spatial_score(3, 3) == (81, "high")
+    assert spatial_score(3, 8) == (91, "critical")
+    assert spatial_score(4, 1) == (102, "critical")
+
+
+def test_country_risk_level_thresholds():
+    assert [risk_level(value) for value in (0, 30, 31, 50, 51, 65, 66, 80, 81, 100)] == [
+        "Low", "Low", "Normal", "Normal", "Elevated", "Elevated", "High", "High", "Critical", "Critical"
+    ]
 
 
 def test_country_score_formula_and_coverage_warning():

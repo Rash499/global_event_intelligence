@@ -698,6 +698,20 @@ def _m009_region_baselines(conn: sqlite3.Connection) -> None:
     add_index(conn, "idx_region_baselines_region", "region_baselines(region,bucket_kind)")
 
 
+def _m010_digest_snapshots(conn: sqlite3.Connection) -> None:
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS digest_snapshots (
+            snapshot_key TEXT PRIMARY KEY,
+            payload TEXT NOT NULL,
+            generated_at TEXT NOT NULL
+        )
+    """)
+
+
+def _m011_anomaly_z_score(conn: sqlite3.Connection) -> None:
+    add_column(conn, "anomalies", "z_score", "REAL")
+
+
 MIGRATIONS: list[Migration] = [
     Migration(1, "bootstrap_schema", _m001_bootstrap),
     Migration(2, "article_provenance", _m002_article_provenance),
@@ -708,6 +722,8 @@ MIGRATIONS: list[Migration] = [
     Migration(7, "source_credibility", _m007_source_credibility),
     Migration(8, "importance_and_alert_preferences", _m008_importance_alert_preferences),
     Migration(9, "region_baselines", _m009_region_baselines),
+    Migration(10, "digest_snapshots", _m010_digest_snapshots),
+    Migration(11, "anomaly_z_score", _m011_anomaly_z_score),
 ]
 
 LATEST_VERSION = max(m.version for m in MIGRATIONS)

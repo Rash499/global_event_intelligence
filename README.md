@@ -36,6 +36,12 @@ The database layer can later be upgraded to PostgreSQL/PostGIS.
 - Internet connection for GDELT/RSS/Google News RSS ingestion
 - Optional: Ollama for local AI analysis
 
+## Engineering checks
+
+Scheduler-precomputed dashboard, country-risk and convergence digests are served from a SQLite snapshot cache with cache-age metadata; ingestion invalidates snapshots ([docs/digest-cache.md](docs/digest-cache.md)).
+
+Use `npm run types:api` in `frontend/` to regenerate TypeScript API contracts from FastAPI OpenAPI. Lint commands are Ruff (`cd backend && python -m ruff check app tests scripts`) and Biome (`cd frontend && npm run lint`). Install the repository pre-push checks once with `./scripts/install-git-hooks.sh`. Playwright smoke/accessibility tests use demo data: `cd frontend && npm run test:e2e`. Details: [docs/engineering-practices.md](docs/engineering-practices.md). The full upgrade status, including deferred providers and follow-ups, is in [docs/WORLDMONITOR_UPGRADE_REPORT.md](docs/WORLDMONITOR_UPGRADE_REPORT.md).
+
 ## 1. Backend
 
 ```bash
@@ -176,7 +182,7 @@ http://localhost:8000/docs
 
 ## 6. Source provenance and event ranking
 
-Event details display a source-credibility badge and per-publisher catalog labels. The score ranks catalogued source metadata and independent corroboration; it does **not** judge whether an article is true. Publishers absent from the local catalog remain `undeclared`, not tier 4. The 0–100 `importance_score` is a separate ranking from the legacy impact/severity fields. Full definitions and weights are in [docs/scoring-and-source-credibility.md](docs/scoring-and-source-credibility.md).
+Event details display a source-credibility badge and per-publisher catalog labels. The score ranks catalogued source metadata and independent corroboration; it does **not** judge whether an article is true. Publishers absent from the local catalog remain `undeclared`, not tier 4. State-affiliated RSS publishers are labelled and excluded from default feeds; opt in with `RSS_INCLUDE_STATE_AFFILIATED=true`. The 0–100 `importance_score` is a separate ranking from the legacy impact/severity fields. Full definitions and weights are in [docs/scoring-and-source-credibility.md](docs/scoring-and-source-credibility.md).
 
 ## 7. Alert noise controls
 
@@ -196,7 +202,7 @@ Country details now expose a weighted 0–100 indicator with an explicit baselin
 
 ## 11. Provider freshness and intelligence gaps
 
-Provider status now includes schedule-aware freshness and silent-zero detection. `/api/intelligence-gaps` lists missing provider/category/geolocation coverage and is shown in System and Providers. Country detail cards keep a coverage warning. A quiet collection window is not evidence of calm. See [docs/provider-freshness-and-gaps.md](docs/provider-freshness-and-gaps.md).
+Provider status now includes schedule-aware freshness and silent-zero detection. `/api/intelligence-gaps` lists missing provider/category/geolocation coverage and is shown in System and Providers. Country detail cards keep a coverage warning. A quiet collection window is not evidence of calm. See [docs/provider-freshness-and-gaps.md](docs/provider-freshness-and-gaps.md). The current providers' access and license posture, plus integrations deferred because endpoint/license reachability could not be verified, are listed in [docs/data-sources.md](docs/data-sources.md).
 
 ## 12. Optional local AI with Ollama
 

@@ -11,6 +11,10 @@ def load_baselines() -> dict:
     return json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
 
 
+def risk_level(score: float) -> str:
+    return "Critical" if score >= 81 else "High" if score >= 66 else "Elevated" if score >= 51 else "Normal" if score >= 31 else "Low"
+
+
 def _score(count: int, severity_values: list[float], *, unit: float = 12.0) -> float:
     if not count:
         return 0.0
@@ -64,11 +68,13 @@ def calculate_country_risk(country_code: str, events: list[dict], article_count:
     floors_applied = []  # Conflict-history and travel-advisory providers are not yet registered.
     total_boost = sum(boosts.values())
     combined = max(0.0, min(100.0, combined_before_adjustments + total_boost))
-    level = "Critical" if combined >= 81 else "High" if combined >= 66 else "Elevated" if combined >= 51 else "Normal" if combined >= 31 else "Low"
+    level = risk_level(combined)
     coverage = "none" if article_count == 0 and not events else "sparse" if article_count < 5 else "partial" if article_count < 25 else "good"
     missing = []
-    if not events: missing.append("classified event inputs")
-    if article_count == 0: missing.append("news article coverage")
+    if not events:
+        missing.append("classified event inputs")
+    if article_count == 0:
+        missing.append("news article coverage")
     return {
         "score": round(combined, 2), "level": level,
         "formula": "clamp(0.40 × baseline + 0.60 × eventScore + capped provider boosts + applicable floors, 0, 100)",

@@ -7,6 +7,12 @@ from datetime import datetime, timedelta, timezone
 from .geolocation import COUNTRY_BY_CODE
 
 
+def spatial_score(distinct_types: int, event_count: int) -> tuple[int, str]:
+    score = 25 * distinct_types + min(25, 2 * event_count)
+    severity = "critical" if distinct_types >= 4 or score >= 90 else "high"
+    return score, severity
+
+
 def _nearest_country(latitude: float, longitude: float) -> dict | None:
     best = None
     best_distance = float("inf")
@@ -41,7 +47,7 @@ def spatial_convergence_cells(conn, *, now: datetime | None = None, window_hours
         types = sorted({event["category"] for event in events})
         if len(types) < 3:
             continue
-        score = 25 * len(types) + min(25, 2 * len(events))
+        score, severity = spatial_score(len(types), len(events))
         center = (lat_bin + 0.5, lon_bin + 0.5)
         nearest = _nearest_country(*center)
         output.append({
@@ -51,7 +57,7 @@ def spatial_convergence_cells(conn, *, now: datetime | None = None, window_hours
             "distinct_event_types": len(types),
             "event_types": types,
             "score": score,
-            "severity": "critical" if len(types) >= 4 or score >= 90 else "high",
+            "severity": severity,
             "nearest_country": nearest,
             "sample_event_ids": [event["id"] for event in events[:12]],
             "representative_event": events[0],

@@ -182,12 +182,15 @@ async def classify_for_ingestion(article: dict, ai_budget: dict) -> dict:
         )
         if not response:
             return deterministic
+        ai_response_category = response.get("category")
+        if ai_response_category is None:
+            return deterministic
         return merge_ai_classification(
             deterministic,
-            ai_response_category := response.get("category"),
+            ai_response_category,
             response.get("confidence"),
             response.get("subcategory"),
-        ) if ai_response_category is not None else deterministic
+        )
     except Exception as exc:  # noqa: BLE001 - AI is optional
         logger.warning("[AI] classification failed for %s: %s", article.get("url"), exc)
         return deterministic
@@ -740,6 +743,12 @@ async def ingest(providers: list[str] | None = None, trigger: str = "manual") ->
             record_run(result, trigger=trigger)
         except Exception:  # noqa: BLE001 - health persistence must not break ingest
             logger.exception("[PROVIDER] failed to record run for %s", result.provider)
+
+    try:
+        from ..intelligence.digest_cache import invalidate_snapshots
+        invalidate_snapshots()
+    except Exception:  # noqa: BLE001 - cache invalidation cannot fail ingestion
+        logger.exception("[CACHE] digest invalidation failed after ingestion")
 
     finished = utc_now()
     return {

@@ -36,6 +36,16 @@ BASELINE_RETENTION_DAYS = 90
 BASELINE_MIN_SAMPLES = 10
 
 
+def severity_band_for_z(z_score: float) -> str | None:
+    if z_score >= 3.0:
+        return "critical"
+    if z_score >= 2.0:
+        return "high"
+    if z_score >= 1.5:
+        return "medium"
+    return None
+
+
 class WelfordBaseline:
     """Online mean/variance with bounded 90-day sample retention."""
     def __init__(self, samples=None, retention_days=BASELINE_RETENTION_DAYS):
@@ -144,9 +154,9 @@ def _region_anomalies(conn, now: datetime) -> list[dict]:
             variance = stats["m2"] / max(1, stats["sample_count"] - 1)
             sd = math.sqrt(variance)
             z = (row["total"] - stats["mean"]) / sd if sd else (3.0 if row["total"] > stats["mean"] else 0.0)
-            if z < 1.5:
+            band = severity_band_for_z(z)
+            if band is None:
                 continue
-            band = "critical" if z >= 3 else "high" if z >= 2 else "medium"
             output.append({"dimension":"region_activity", "key":region, "bucket":kind, "window_hours":24, "observed":row["total"], "baseline":round(stats["mean"],2), "expected":round(stats["mean"],2), "deviation":round(z,2), "z_score":round(z,2), "score":round(z,2), "severity":band, "independent_sources":0, "confidence":None, "sample_event_ids":json.loads(row["ids"] or "[]")[:8], "explanation":f"Observed activity is {z:.2f} standard deviations above the {kind}-matched 90-day regional baseline; this is a description of collected events, not a prediction."})
     return output
 
@@ -363,8 +373,8 @@ def detect_anomalies(conn, window_hours: int = 24, store: bool = True) -> list[d
                     INSERT OR IGNORE INTO anomalies (
                         detected_at, dimension, key, window_hours, observed, baseline,
                         expected, deviation, score, independent_sources, confidence,
-                        explanation, sample_event_ids, severity
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        explanation, sample_event_ids, severity, z_score
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         detected_at,
@@ -381,6 +391,7 @@ def detect_anomalies(conn, window_hours: int = 24, store: bool = True) -> list[d
                         item["explanation"] + " " + item.get("limitations", ""),
                         json.dumps(item["sample_event_ids"]),
                         item.get("severity"),
+                        item.get("z_score", item.get("deviation")),
                     ),
                 )
 

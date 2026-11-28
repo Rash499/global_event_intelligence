@@ -249,6 +249,8 @@ def test_convergence_requires_multiple_escalating_groups(client, conn):
     insert("Outbreak B", "public_health", "LK", 5.0, 3)
     insert("Riot A", "protest_unrest", "LK", 5.0, 2)
     insert("Riot B", "protest_unrest", "LK", 5.0, 4)
+    from app.intelligence.digest_cache import invalidate_snapshots
+    invalidate_snapshots()  # direct fixture inserts bypass the ingestion invalidation hook
     body = client.get("/api/convergence").json()
     countries = {item["country_code"]: item for item in body["items"]}
     assert "LK" in countries
@@ -305,6 +307,19 @@ def _refresh_alert_fixture(seeded):
         "UPDATE events SET occurred_at=?, event_time=?, importance_score=80",
         (_iso(), _iso()),
     )
+
+
+def test_alert_sensitivity_preference_persists_per_account(client):
+    email = "alerts-user@example.com"
+    registered = client.post("/api/auth/register", json={"email": email, "password": "long-demo-password", "display_name": "Alert User"})
+    assert registered.status_code == 201
+    token = registered.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    assert client.get("/api/alerts/preferences", headers=headers).json()["sensitivity"] == "critical_and_high"
+    updated = client.put("/api/alerts/preferences", headers=headers, json={"sensitivity": "critical_only"})
+    assert updated.status_code == 200
+    assert client.get("/api/alerts/preferences", headers=headers).json()["sensitivity"] == "critical_only"
+    assert client.get("/api/alerts/preferences").status_code == 401
 
 
 def test_alert_rule_creation_and_evaluation(client, seeded):
