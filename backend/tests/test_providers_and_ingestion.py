@@ -543,3 +543,145 @@ def test_structured_observation_updates_existing_event(db_path):
     finally:
         conn.close()
     assert count == 1
+
+
+# ----------------------------------------------------------------------
+# Ingestion performance indexes (dedupe + event matching candidates)
+# ----------------------------------------------------------------------
+def _raw_article(title, url, published_at, provider="rss", provider_record_id=None,
+                 publisher="BBC", publisher_domain="bbc.com", description=""):
+    return {
+        "title": title,
+        "url": url,
+        "source": publisher,
+        "publisher": publisher,
+        "publisher_domain": publisher_domain,
+        "provider": provider,
+        "provider_record_id": provider_record_id,
+        "published_at": published_at,
+        "description": description or title,
+        "content_hash": None,
+    }
+
+
+def test_dedupe_index_matches_full_scan_verdicts(db_path):
+    """The candidate index must reproduce the full pairwise scan exactly.
+
+    Covers the paths the index is allowed to skip: exact URL, exact title
+    (window-independent), fuzzy title inside/outside the 48h window,
+    provider-record identity, and clean inserts.
+    """
+    from app.database.db import get_connection
+    from app.ingestion import service
+
+    t0 = "2026-11-27T04:00:00Z"
+    records = [
+        _raw_article("Magnitude 6.8 earthquake strikes central Japan",
+                     "https://bbc.example/quake-1", t0),
+        # exact canonical-URL re-collection
+        _raw_article("Magnitude 6.8 earthquake strikes central Japan",
+                     "https://bbc.example/quake-1", t0),
+        # exact title, far outside the fuzzy window: still a duplicate
+        _raw_article("Magnitude 6.8 earthquake strikes central Japan",
+                     "https://bbc.example/quake-old", "2026-08-01T04:00:00Z"),
+        # fuzzy title match inside the window (different publisher)
+        _raw_article("Earthquake magnitude 6.8 strikes central Japan region",
+                     "https://reuters.example/quake-2", "2026-11-27T05:00:00Z",
+                     publisher="Reuters", publisher_domain="reuters.com"),
+        # fuzzy-shaped title but outside the 48h window: NOT a duplicate
+        _raw_article("Earthquake magnitude 6.8 strikes central Japan region",
+                     "https://reuters.example/quake-late", "2026-08-01T05:00:00Z",
+                     publisher="Reuters", publisher_domain="reuters.com"),
+        # provider-record identity beats a completely different headline
+        _raw_article("Harbor ferry sinks near Lisbon", "https://bbc.example/ferry",
+                     t0, provider_record_id="rec-1"),
+        _raw_article("Completely unrelated headline here", "https://bbc.example/other",
+                     t0, provider_record_id="rec-1"),
+        # clean insert
+        _raw_article("Kenya protests over fuel prices enter third day",
+                     "https://bbc.example/kenya", t0),
+    ]
+
+    def run(use_index: bool):
+        conn = get_connection()
+        try:
+            conn.execute("DELETE FROM articles")
+            conn.commit()
+            existing: list[dict] = []
+            index = service._ArticleDedupeIndex(existing) if use_index else None
+            verdicts = []
+            for record in records:
+                _id, verdict = service.store_article(conn, dict(record), existing, index)
+                verdicts.append((verdict["duplicate"], verdict.get("kind")))
+            conn.commit()
+            return verdicts, len(existing)
+        finally:
+            conn.close()
+
+    scanned = run(use_index=False)
+    indexed = run(use_index=True)
+    assert indexed == scanned
+    # sanity on the expected shape of the sequence itself
+    kinds = [kind for _dup, kind in indexed[0]]
+    assert kinds[1] == "canonical_url"
+    assert indexed[0][2][0] is True and indexed[0][4][0] is False
+    assert indexed[1] == 4  # 8 records -> 4 stored articles
+
+
+def test_event_candidate_index_covers_every_non_independent_decision():
+    """Any pair compare_events calls same/related/similar must be indexed.
+
+    Pairs judged independent may be skipped - that is the entire point of
+    the candidate index - so the assertion is one-directional coverage.
+    """
+    from app.ingestion.service import _EventCandidateIndex
+    from app.intelligence.clustering import INDEPENDENT_EVENT, compare_events
+
+    events = [
+        {"id": 1, "title": "Magnitude 6.8 earthquake strikes central Japan",
+         "country_code": "JP", "category": "natural_disaster", "subcategory": "earthquake",
+         "latitude": 36.2, "longitude": 138.25, "location_precision": "city",
+         "event_time": "2026-11-27T03:00:00Z"},
+        {"id": 2, "title": "Kenya protests over fuel prices enter third day",
+         "country_code": "KE", "category": "politics", "subcategory": "protest",
+         "latitude": -1.29, "longitude": 36.82, "location_precision": "city",
+         "event_time": "2026-11-27T03:00:00Z"},
+        {"id": 3, "title": "Harbor ferry sinks near Lisbon port",
+         "country_code": "PT", "category": "accident", "subcategory": "maritime",
+         "latitude": 38.72, "longitude": -9.14, "location_precision": "exact",
+         "event_time": "2026-11-27T03:00:00Z"},
+    ]
+    index = _EventCandidateIndex([dict(event) for event in events])
+
+    payloads = [
+        # same incident as event 1, reworded (shared anchors/tokens)
+        {"title": "Japan quake: magnitude 6.8 hits central Honshu",
+         "country_code": "JP", "category": "natural_disaster", "subcategory": "earthquake",
+         "latitude": 36.0, "longitude": 138.0, "location_precision": "city",
+         "event_time": "2026-11-27T04:00:00Z"},
+        # same country + theme as event 2 within the related window
+        {"title": "Fuel price demonstrations spread to Mombasa",
+         "country_code": "KE", "category": "politics", "subcategory": "protest",
+         "latitude": -4.05, "longitude": 39.67, "location_precision": "city",
+         "event_time": "2026-11-28T04:00:00Z"},
+        # geographically close to event 3, no shared wording or country
+        {"title": "Capsized vessel rescue operation under way",
+         "country_code": "", "category": "accident", "subcategory": "maritime",
+         "latitude": 38.9, "longitude": -9.3, "location_precision": "exact",
+         "event_time": "2026-11-27T04:30:00Z"},
+        # wholly unrelated: must be judged independent of everything
+        {"title": "Parliament passes annual budget in Ottawa",
+         "country_code": "CA", "category": "politics", "subcategory": "legislation",
+         "latitude": 45.42, "longitude": -75.69, "location_precision": "city",
+         "event_time": "2026-11-27T04:00:00Z"},
+    ]
+
+    for payload in payloads:
+        candidates = index.candidate_ids(payload)
+        for event in events:
+            decision = compare_events(payload, event).decision
+            if decision != INDEPENDENT_EVENT:
+                assert event["id"] in candidates, (payload["title"], event["title"], decision)
+
+    # The unrelated payload is a candidate for nothing.
+    assert index.candidate_ids(payloads[3]) == set()

@@ -20,7 +20,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from ..config import settings
 from ..database.db import get_connection, write_connection
@@ -28,14 +28,21 @@ from ..intelligence.assessment import build_event_assessment, record_timeline_en
 from ..intelligence.classification import classify_article
 from ..intelligence.clustering import (
     SAME_EVENT,
+    _anchors as _event_anchors,
+    _tokens as _event_tokens,
     compare_events,
     derive_event_state,
     find_related_events,
 )
 from ..intelligence.deduplication import (
+    NEAR_DUPLICATE_WINDOW_HOURS,
+    _parse_datetime as _parse_article_datetime,
+    _tokens as _article_tokens,
     assess_independence,
     compare_articles,
+    normalize_title as _normalize_title,
 )
+from ..intelligence.urls import canonicalize_url
 from ..intelligence.geolocation import extract_location
 from ..intelligence.importance import calculate_importance_score
 from ..intelligence.source_catalog import credibility_score, source_metadata
@@ -84,9 +91,104 @@ def _load_existing_articles(conn) -> list[dict]:
     ]
 
 
-def store_article(conn, article: dict, existing: list[dict]) -> tuple[int | None, dict]:
+class _ArticleDedupeIndex:
+    """Candidate index over stored articles for one ingestion cycle.
+
+    ``store_article`` used to run the full pairwise ``compare_articles``
+    against every stored article (5,000) for every new article (60) —
+    100k+ comparisons per cycle, each re-canonicalising URLs and
+    re-tokenising titles. But a duplicate verdict is only reachable via
+    an exact canonical URL / provider record / content hash / normalised
+    title, or via fuzzy title matching, which needs at least one shared
+    title token. Indexing those keys once per cycle reduces the pairwise
+    scan to a handful of plausible candidates per article. Iterating the
+    candidates in stored order preserves the original first-match
+    semantics exactly.
+    """
+
+    def __init__(self, existing: list[dict]) -> None:
+        self._by_url: dict[str, set[int]] = {}
+        self._by_provider_record: dict[tuple, set[int]] = {}
+        self._by_hash: dict[str, set[int]] = {}
+        self._by_title: dict[str, set[int]] = {}
+        self._by_token: dict[str, set[int]] = {}
+        self._by_id: dict[int, dict] = {}
+        self._times: dict[int, object] = {}
+        for article in existing:
+            self.add(article)
+
+    @staticmethod
+    def _title_of(article: dict) -> str:
+        return _normalize_title(article.get("title") or article.get("event_title") or "")
+
+    def add(self, article: dict) -> None:
+        article_id = article.get("id")
+        if article_id is None:
+            return
+        self._by_id[article_id] = article
+        # Parsed once here so the per-candidate window check below is a
+        # datetime comparison, not two ISO parses per candidate pair.
+        self._times[article_id] = _parse_article_datetime(
+            article.get("published_at") or article.get("event_time") or article.get("first_seen_at")
+        )
+        canonical = canonicalize_url(article.get("url"))
+        if canonical:
+            self._by_url.setdefault(canonical, set()).add(article_id)
+        if article.get("provider_record_id"):
+            key = (article.get("provider"), article.get("provider_record_id"))
+            self._by_provider_record.setdefault(key, set()).add(article_id)
+        content_hash = article.get("content_hash") or article.get("hash")
+        if content_hash:
+            self._by_hash.setdefault(content_hash, set()).add(article_id)
+        title = self._title_of(article)
+        if title:
+            self._by_title.setdefault(title, set()).add(article_id)
+            for token in _article_tokens(title):
+                self._by_token.setdefault(token, set()).add(article_id)
+
+    def candidate_ids(self, article: dict) -> set[int]:
+        ids: set[int] = set()
+        canonical = canonicalize_url(article.get("url"))
+        if canonical:
+            ids |= self._by_url.get(canonical, set())
+        if article.get("provider_record_id"):
+            key = (article.get("provider"), article.get("provider_record_id"))
+            ids |= self._by_provider_record.get(key, set())
+        content_hash = article.get("content_hash") or article.get("hash")
+        if content_hash:
+            ids |= self._by_hash.get(content_hash, set())
+        title = self._title_of(article)
+        if title:
+            ids |= self._by_title.get(title, set())
+            # Fuzzy title/description matching additionally requires the
+            # pair to fall inside the near-duplicate time window
+            # (compare_articles returns False before scoring otherwise),
+            # so token-sharing candidates outside it can be skipped.
+            # Exact matches above are window-independent, as in
+            # compare_articles itself.
+            token_ids: set[int] = set()
+            for token in _article_tokens(title):
+                token_ids |= self._by_token.get(token, set())
+            left_time = _parse_article_datetime(
+                article.get("published_at") or article.get("event_time") or article.get("first_seen_at")
+            )
+            if left_time is not None:
+                window = timedelta(hours=NEAR_DUPLICATE_WINDOW_HOURS)
+                for candidate_id in token_ids:
+                    right_time = self._times.get(candidate_id)
+                    if right_time is not None and abs(left_time - right_time) <= window:
+                        ids.add(candidate_id)
+        return ids
+
+
+def store_article(conn, article: dict, existing: list[dict], index: _ArticleDedupeIndex | None = None) -> tuple[int | None, dict]:
     """Insert or refresh an article. Returns ``(article_id, verdict)``."""
-    for candidate in existing:
+    if index is not None:
+        candidate_ids = index.candidate_ids(article)
+        candidates = [c for c in existing if c.get("id") in candidate_ids]
+    else:
+        candidates = existing
+    for candidate in candidates:
         verdict = compare_articles(article, candidate)
         if verdict.is_duplicate:
             conn.execute(
@@ -147,7 +249,10 @@ def store_article(conn, article: dict, existing: list[dict]) -> tuple[int | None
             article.get("source_region"),
         ),
     ).lastrowid
-    existing.append({**article, "id": article_id})
+    stored = {**article, "id": article_id}
+    existing.append(stored)
+    if index is not None:
+        index.add(stored)
     return article_id, {"duplicate": False}
 
 
@@ -194,6 +299,79 @@ async def classify_for_ingestion(article: dict, ai_budget: dict) -> dict:
     except Exception as exc:  # noqa: BLE001 - AI is optional
         logger.warning("[AI] classification failed for %s: %s", article.get("url"), exc)
         return deterministic
+
+
+class _EventCandidateIndex:
+    """Candidate index over stored events for one ingestion cycle.
+
+    The article loop used to run ``compare_events`` against every stored
+    event (2,000) for every new article. But a non-independent decision
+    is only reachable when the pair shares a title token or anchor
+    (same/similar-event), shares a country (related-event), or lies
+    within the 200 km clustering window. Indexing those keys once per
+    cycle — title tokens, title anchors, country, and a 2-degree
+    lat/lon grid (a 3x3 neighbourhood covers 200 km at any latitude) —
+    shrinks the pairwise scan to a handful of plausible events while
+    preserving the full scan's decisions and first-best ordering.
+    """
+
+    _CELL_DEGREES = 2.0
+
+    def __init__(self, events: list[dict]) -> None:
+        self._by_token: dict[str, set[int]] = {}
+        self._by_anchor: dict[str, set[int]] = {}
+        self._by_country: dict[str, set[int]] = {}
+        self._by_cell: dict[tuple[int, int], set[int]] = {}
+        for event in events:
+            self.add(event)
+
+    @staticmethod
+    def _coords(item: dict) -> tuple[float, float] | None:
+        try:
+            lat = float(item.get("latitude"))
+            lon = float(item.get("longitude"))
+        except (TypeError, ValueError):
+            return None
+        return lat, lon
+
+    def _cell(self, lat: float, lon: float) -> tuple[int, int]:
+        import math
+
+        return (math.floor(lat / self._CELL_DEGREES), math.floor(lon / self._CELL_DEGREES))
+
+    def add(self, event: dict) -> None:
+        event_id = event.get("id")
+        if event_id is None:
+            return
+        title = _normalize_title(event.get("title") or event.get("event_title") or "")
+        for token in _event_tokens(title):
+            self._by_token.setdefault(token, set()).add(event_id)
+        for anchor in _event_anchors(event):
+            self._by_anchor.setdefault(anchor, set()).add(event_id)
+        country = (event.get("country_code") or "").upper()
+        if country:
+            self._by_country.setdefault(country, set()).add(event_id)
+        coords = self._coords(event)
+        if coords:
+            self._by_cell.setdefault(self._cell(*coords), set()).add(event_id)
+
+    def candidate_ids(self, payload: dict) -> set[int]:
+        ids: set[int] = set()
+        title = _normalize_title(payload.get("title") or payload.get("event_title") or "")
+        for token in _event_tokens(title):
+            ids |= self._by_token.get(token, set())
+        for anchor in _event_anchors(payload):
+            ids |= self._by_anchor.get(anchor, set())
+        country = (payload.get("country_code") or "").upper()
+        if country:
+            ids |= self._by_country.get(country, set())
+        coords = self._coords(payload)
+        if coords:
+            cell_lat, cell_lon = self._cell(*coords)
+            for d_lat in (-1, 0, 1):
+                for d_lon in (-1, 0, 1):
+                    ids |= self._by_cell.get((cell_lat + d_lat, cell_lon + d_lon), set())
+        return ids
 
 
 # ----------------------------------------------------------------------
@@ -622,6 +800,7 @@ async def ingest(providers: list[str] | None = None, trigger: str = "manual") ->
 
     with write_connection() as conn:
         existing_articles = _load_existing_articles(conn)
+        article_index = _ArticleDedupeIndex(existing_articles)
         existing_events = [
             dict(row)
             for row in conn.execute(
@@ -636,11 +815,17 @@ async def ingest(providers: list[str] | None = None, trigger: str = "manual") ->
                 """
             ).fetchall()
         ]
+        event_index = _EventCandidateIndex(existing_events)
 
         new_relationships: list[dict] = []
+        # Statistics are recomputed once per touched event after all
+        # articles are stored, not once per article: in a corroborated
+        # cycle most articles merge into events that were already
+        # recomputed moments earlier in the same transaction.
+        touched_event_ids: dict[int, None] = {}
 
         for article in article_records:
-            article_id, verdict = store_article(conn, article, existing_articles)
+            article_id, verdict = store_article(conn, article, existing_articles, article_index)
             if article_id is None:
                 counters["duplicates_removed"] += 1
                 continue
@@ -652,8 +837,11 @@ async def ingest(providers: list[str] | None = None, trigger: str = "manual") ->
 
             payload = _event_payload(article, classification)
 
+            match_candidates = event_index.candidate_ids(payload)
             best_event, best_score = None, 0.0
             for event in existing_events:
+                if event["id"] not in match_candidates:
+                    continue
                 comparison = compare_events(payload, event)
                 if comparison.decision == SAME_EVENT and comparison.score > best_score:
                     best_event, best_score = event, comparison.score
@@ -696,6 +884,7 @@ async def ingest(providers: list[str] | None = None, trigger: str = "manual") ->
                     }
                 )
                 counters["events_created"] += 1
+                event_index.add(existing_events[-1])
                 record_timeline_entry(
                     conn, event_id, article.get("published_at") or to_utc_iso(utc_now()),
                     "initial_report",
@@ -703,7 +892,7 @@ async def ingest(providers: list[str] | None = None, trigger: str = "manual") ->
                     article_id=article_id,
                 )
 
-            _recompute_event_statistics(conn, event_id)
+            touched_event_ids[event_id] = None
 
             for relationship in new_relationships[-3:]:
                 if relationship["target_id"] and relationship["target_id"] != event_id:
@@ -726,7 +915,12 @@ async def ingest(providers: list[str] | None = None, trigger: str = "manual") ->
             else:
                 counters["structured_events_updated"] += 1
                 counters["events_updated"] += 1
-            _recompute_event_statistics(conn, event_id)
+            touched_event_ids[event_id] = None
+
+        # One statistics recompute per touched event, after every article
+        # and observation is stored (see touched_event_ids above).
+        for touched_id in touched_event_ids:
+            _recompute_event_statistics(conn, touched_id)
 
         # Attach per-provider event counters before the runs are persisted.
         for result in results:
