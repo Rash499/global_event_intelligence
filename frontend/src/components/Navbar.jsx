@@ -67,7 +67,11 @@ export default function Navbar({
   return (
     <nav className={scrolled ? "site-navbar is-scrolled" : "site-navbar"} aria-label="Workspace">
       <div className="navbar-inner">
-        <button className="navbar-brand" onClick={() => go("overview")} aria-label="Global Intelligence - operations workspace home">
+        {/* No aria-label: the accessible name comes from the visible
+            text itself ("Global Intelligence / OPERATIONS WORKSPACE"),
+            which is what voice-control users speak (axe
+            label-content-name-mismatch, WCAG 2.5.3). */}
+        <button className="navbar-brand" onClick={() => go("overview")}>
           <span className="navbar-orbit" aria-hidden="true"><i /><i /><i /></span>
           <span>
             <strong>Global Intelligence</strong>
@@ -115,11 +119,12 @@ export default function Navbar({
         </div>
 
         <div className="navbar-actions">
+          {/* Accessible name from visible text ("Search" + shortcut),
+              see the brand button note above. */}
           <button
             type="button"
             className="navbar-search"
             onClick={onOpenSearch}
-            aria-label="Search events, countries and sources (⌘K)"
           >
             <span aria-hidden="true">⌕</span>
             <span className="navbar-search-text">Search</span>
