@@ -146,6 +146,11 @@ class SourceProvider:
     # news articles; the ingestion service branches on this flag.
     produces_structured_observations: bool = False
     default_interval_seconds: int = 1800
+    # Override these per source when a published schedule is slower than the
+    # generic freshness window (for example a daily bulletin).
+    freshness_fresh_after_seconds: int | None = None
+    freshness_stale_after_seconds: int = 7200
+    freshness_very_stale_after_seconds: int = 21600
 
     def __init__(self, config: Settings | None = None) -> None:
         self.config = config or default_settings

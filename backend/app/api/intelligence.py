@@ -244,6 +244,28 @@ def dashboard_overview(hours: int = Query(24, ge=1, le=168)):
 # ----------------------------------------------------------------------
 # Providers
 # ----------------------------------------------------------------------
+@router.get("/intelligence-gaps")
+def intelligence_gaps(window_days: int = Query(7, ge=1, le=30)):
+    """Summarize provider and taxonomy coverage gaps without inferring calm."""
+    from ..ingestion.registry import provider_health_payload
+    since = _iso(datetime.now(timezone.utc) - timedelta(days=window_days))
+    provider_items = provider_health_payload()
+    conn = get_connection()
+    try:
+        observed = {row["category"] for row in conn.execute("SELECT DISTINCT category FROM events WHERE category IS NOT NULL AND julianday(COALESCE(occurred_at,event_time,created_at)) >= julianday(?)", (since,)).fetchall()}
+        categories = sorted(TAXONOMY.keys()) if isinstance(TAXONOMY, dict) else []
+        category_gaps = [category for category in categories if category not in observed]
+        location = conn.execute("SELECT COUNT(*) AS total,SUM(CASE WHEN latitude IS NULL OR longitude IS NULL THEN 1 ELSE 0 END) AS unlocated FROM events WHERE julianday(COALESCE(occurred_at,event_time,created_at)) >= julianday(?)", (since,)).fetchone()
+    finally:
+        conn.close()
+    unavailable = [item for item in provider_items if item.get("freshness_status") in {"error", "no_data", "stale", "very_stale", "disabled"}]
+    silent_zero = [item["provider"] for item in provider_items if item.get("silent_zero")]
+    gaps = [{"type":"provider", "provider":item["provider"], "status":item.get("freshness_status"), "detail":item.get("notes") or item.get("last_error") or "Provider has no recent data."} for item in unavailable]
+    gaps.extend({"type":"category", "category":category, "detail":"No events in this taxonomy category were stored in the selected window."} for category in category_gaps)
+    gaps.extend({"type":"silent_zero", "provider":key, "detail":"Three or more consecutive successful runs returned zero records."} for key in silent_zero)
+    return {"generated_at":_iso(datetime.now(timezone.utc)), "window_days":window_days, "gaps":gaps, "count":len(gaps), "providers":provider_items, "categories": {"observed":sorted(observed), "no_events":category_gaps}, "location_coverage":{"events":location["total"] or 0,"without_coordinates":location["unlocated"] or 0}, "caveat":"A reporting gap is unknown coverage, not evidence that there is no event or that conditions are calm."}
+
+
 @router.get("/providers")
 def providers(history: bool = False):
     from ..ingestion.registry import provider_health_payload

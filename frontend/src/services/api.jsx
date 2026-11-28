@@ -240,6 +240,11 @@ export const getProviders = async (history = false) => {
   return response.data;
 };
 
+export const getIntelligenceGaps = async (windowDays = 7) => {
+  const response = await api.get("/intelligence-gaps", { params: { window_days: windowDays } });
+  return response.data;
+};
+
 export const getProviderHistory = async (provider, limit = 50) => {
   const response = await api.get("/providers/history", { params: { provider, limit } });
   return response.data;

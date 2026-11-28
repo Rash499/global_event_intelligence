@@ -280,6 +280,12 @@ def test_spatial_convergence_bins_three_categories(client, conn):
     assert alert["evidence"]["cell"] == item["cell"]
 
 
+def test_intelligence_gaps_endpoint_reports_coverage_caveat(client, seeded):
+    body = client.get("/api/intelligence-gaps").json()
+    assert "gaps" in body and "providers" in body
+    assert "not evidence" in body["caveat"]
+
+
 def test_country_without_reporting_is_not_described_as_safe(client, seeded):
     body = client.get("/api/countries/NO/risk").json()
     assert body["coverage"]["level"] == "none"

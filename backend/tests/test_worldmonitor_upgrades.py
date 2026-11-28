@@ -5,6 +5,7 @@ from app.intelligence.importance import calculate_importance_score
 from app.alerts.evaluator import alert_gate_decision
 from app.intelligence.anomaly import WelfordBaseline
 from app.intelligence.country_risk import calculate_country_risk
+from app.ingestion.registry import freshness_status, silent_zero_detected
 
 
 def test_unknown_source_is_not_treated_as_tier_four():
@@ -145,3 +146,19 @@ def test_country_provider_boosts_are_capped_and_components_are_exposed():
     assert result["boosts"]["disasters"]["score"] <= 8
     assert result["boosts"]["humanitarian"]["score"] <= 6
     assert result["boosts"]["outbreaks"]["score"] <= 6
+
+
+def test_provider_freshness_thresholds_with_fake_clock():
+    now = datetime(2026, 8, 1, tzinfo=timezone.utc)
+    fresh_at = (now - timedelta(minutes=10)).isoformat()
+    aging_at = (now - timedelta(hours=1)).isoformat()
+    stale_at = (now - timedelta(hours=3)).isoformat()
+    very_stale_at = (now - timedelta(hours=7)).isoformat()
+    assert freshness_status(enabled=False, last_status=None, last_success_at=None, now=now, fresh_after=900, stale_after=7200, very_stale_after=21600)[0] == "disabled"
+    assert freshness_status(enabled=True, last_status="unavailable", last_success_at=None, now=now, fresh_after=900, stale_after=7200, very_stale_after=21600)[0] == "error"
+    assert freshness_status(enabled=True, last_status=None, last_success_at=None, now=now, fresh_after=900, stale_after=7200, very_stale_after=21600)[0] == "no_data"
+    assert freshness_status(enabled=True, last_status="healthy", last_success_at=fresh_at, now=now, fresh_after=900, stale_after=7200, very_stale_after=21600)[0] == "fresh"
+    assert freshness_status(enabled=True, last_status="healthy", last_success_at=aging_at, now=now, fresh_after=900, stale_after=7200, very_stale_after=21600)[0] == "aging"
+    assert freshness_status(enabled=True, last_status="healthy", last_success_at=stale_at, now=now, fresh_after=900, stale_after=7200, very_stale_after=21600)[0] == "stale"
+    assert freshness_status(enabled=True, last_status="healthy", last_success_at=very_stale_at, now=now, fresh_after=900, stale_after=7200, very_stale_after=21600)[0] == "very_stale"
+    assert silent_zero_detected(3) and not silent_zero_detected(2)

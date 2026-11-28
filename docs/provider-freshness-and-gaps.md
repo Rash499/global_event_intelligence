@@ -1,0 +1,5 @@
+# Provider freshness and intelligence gaps
+
+Provider payloads expose `freshness_status`: `fresh`, `aging`, `stale`, `very_stale`, `no_data`, `error`, or `disabled`, alongside a provider's configured threshold values and last-success age. Default freshness follows the provider interval (at least 15 minutes); stale and very-stale thresholds default to two and six hours. A source with a slower documented schedule can override all thresholds on its provider class. `aging` describes the interval between the provider's fresh schedule and the two-hour stale threshold.
+
+Three consecutive successful provider runs receiving zero records trigger `silent_zero`; errors break the streak. `/api/intelligence-gaps` lists these flags, unavailable/disabled/stale/no-data providers, taxonomy categories with no recent stored events, and event geolocation gaps. These indicators describe collection capability, not real-world quiet or safety. Country risk responses retain the same explicit coverage caveat for the selected country.

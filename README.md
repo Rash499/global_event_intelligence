@@ -194,7 +194,11 @@ Country details now expose a weighted 0–100 indicator with an explicit baselin
 
 `/api/convergence` compares country-level taxonomy-group counts across windows; `/api/spatial-convergence` instead bins geolocated events into 1° cells and identifies 3+ category co-location over 24 hours. MapView lists qualifying cells, and alert creation remains subject to the noise gates. See [docs/geographic-convergence.md](docs/geographic-convergence.md).
 
-## 11. Optional local AI with Ollama
+## 11. Provider freshness and intelligence gaps
+
+Provider status now includes schedule-aware freshness and silent-zero detection. `/api/intelligence-gaps` lists missing provider/category/geolocation coverage and is shown in System and Providers. Country detail cards keep a coverage warning. A quiet collection window is not evidence of calm. See [docs/provider-freshness-and-gaps.md](docs/provider-freshness-and-gaps.md).
+
+## 12. Optional local AI with Ollama
 
 Install Ollama separately, then pull a model, for example:
 
@@ -218,7 +222,7 @@ Restart FastAPI.
 
 The ingestion service will ask the local model to classify/summarize candidate articles. If Ollama is unavailable, the application automatically falls back to deterministic analysis, so the MVP still works.
 
-## 12. API examples
+## 13. API examples
 
 Latest events:
 ```text
@@ -248,7 +252,7 @@ GET  /api/ai/suggestions
 POST /api/ai/index        {"force": false, "limit": 300}
 ```
 
-## 13. Global Intelligence Assistant (Phase 3)
+## 14. Global Intelligence Assistant (Phase 3)
 
 The assistant answers questions strictly from indexed platform data. Every answer
 carries numbered evidence records and source links that were verified against the

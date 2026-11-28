@@ -161,13 +161,14 @@ def record_run(result: CollectionResult, trigger: str = "manual") -> int:
         run_id = cursor.lastrowid
 
         row = conn.execute(
-            "SELECT consecutive_failures, avg_duration_ms FROM providers WHERE key = ?",
+            "SELECT consecutive_failures, avg_duration_ms, consecutive_empty_runs FROM providers WHERE key = ?",
             (result.provider,),
         ).fetchone()
 
         success = result.status in {"healthy", "degraded"}
         failures = 0 if success else (row["consecutive_failures"] if row else 0) + 1
         avg = row["avg_duration_ms"] if row else None
+        empty_runs = ((row["consecutive_empty_runs"] or 0) + 1) if success and result.records_received == 0 else 0
         if result.duration_ms and success:
             avg = (
                 result.duration_ms
@@ -183,6 +184,7 @@ def record_run(result: CollectionResult, trigger: str = "manual") -> int:
                 last_error = CASE WHEN ? THEN last_error ELSE ? END,
                 consecutive_failures = ?,
                 avg_duration_ms = ?,
+                consecutive_empty_runs = ?,
                 updated_at = ?
             WHERE key = ?
             """,
@@ -194,11 +196,34 @@ def record_run(result: CollectionResult, trigger: str = "manual") -> int:
                 ("; ".join(result.errors)[:1000] if result.errors else f"status={result.status}"),
                 failures,
                 avg,
+                empty_runs,
                 now,
                 result.provider,
             ),
         )
     return run_id
+
+
+def freshness_status(*, enabled: bool, last_status: str | None, last_success_at: str | None, now: datetime, fresh_after: int, stale_after: int, very_stale_after: int) -> tuple[str, int | None]:
+    if not enabled:
+        return "disabled", None
+    if last_status == "unavailable":
+        return "error", None
+    if not last_success_at:
+        return "no_data", None
+    try:
+        parsed = datetime.fromisoformat(last_success_at.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        age = max(0, int((now - parsed.astimezone(timezone.utc)).total_seconds()))
+    except (ValueError, TypeError):
+        return "no_data", None
+    status = "very_stale" if age > very_stale_after else "stale" if age > stale_after else "fresh" if age <= fresh_after else "aging"
+    return status, age
+
+
+def silent_zero_detected(consecutive_empty_runs: int, threshold: int = 3) -> bool:
+    return consecutive_empty_runs >= threshold
 
 
 def provider_health_payload(include_history: bool = False) -> list[dict]:
@@ -229,24 +254,29 @@ def provider_health_payload(include_history: bool = False) -> list[dict]:
             latest = runs[0] if runs else None
             health["last_run_status"] = latest["status"] if latest else None
             health["records_last_run"] = latest["records_received"] if latest else 0
+            health["consecutive_empty_runs"] = state.get("consecutive_empty_runs", 0)
+            health["silent_zero"] = silent_zero_detected(health["consecutive_empty_runs"], 3)
+            health["silent_zero_threshold"] = 3
 
-            # Freshness: how long since the last successful collection.
+            # Freshness thresholds belong to each provider because daily or
+            # weekly bulletins should not be judged by a 15-minute feed cadence.
             last_success = health.get("last_success_at")
-            if last_success and health["enabled"] and health["config_satisfied"]:
-                try:
-                    age = (
-                        datetime.now(timezone.utc)
-                        - datetime.fromisoformat(last_success)
-                    ).total_seconds()
-                    if age > provider_interval_seconds(key) * 3:
-                        health["status"] = "degraded"
-                        health["staleness_seconds"] = int(age)
-                        health["notes"] = (
-                            "No successful collection for longer than three "
-                            "configured intervals."
-                        )
-                except ValueError:
-                    pass
+            fresh_after = getattr(provider, "freshness_fresh_after_seconds", None) or max(900, provider_interval_seconds(key))
+            stale_after = int(getattr(provider, "freshness_stale_after_seconds", 7200))
+            very_stale_after = int(getattr(provider, "freshness_very_stale_after_seconds", 21600))
+            health["freshness_thresholds_seconds"] = {"fresh_after": fresh_after, "stale_after": stale_after, "very_stale_after": very_stale_after}
+            freshness, age = freshness_status(
+                enabled=health["enabled"],
+                last_status=latest["status"] if latest else None,
+                last_success_at=last_success,
+                now=datetime.now(timezone.utc),
+                fresh_after=fresh_after,
+                stale_after=stale_after,
+                very_stale_after=very_stale_after,
+            )
+            if age is not None:
+                health["last_success_age_seconds"] = age
+            health["freshness_status"] = freshness
             payload.append(health)
         return payload
     finally:

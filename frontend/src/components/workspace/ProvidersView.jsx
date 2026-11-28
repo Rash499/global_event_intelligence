@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { getIngestionStatus, getProviderHistory, getProviders, runProviderIngestion } from "../../services/api.jsx";
+import { getIngestionStatus, getProviderHistory, getProviders, getIntelligenceGaps, runProviderIngestion } from "../../services/api.jsx";
 import { formatDateTime, formatRelativeTime } from "../../services/dateFormat.jsx";
 import { formatNumber, humanise } from "../../services/format.jsx";
 import useApiResource from "../../hooks/useApiResource";
@@ -34,6 +34,7 @@ const STATUS_COPY = {
 
 export default function ProvidersView() {
   const providers = useApiResource(() => getProviders(true), [], { pollMs: 60000 });
+  const gaps = useApiResource(() => getIntelligenceGaps(), [], { pollMs: 60000 });
   const [selected, setSelected] = useState(null);
   const [running, setRunning] = useState(null);
   const [runResult, setRunResult] = useState(null);
@@ -109,6 +110,13 @@ export default function ProvidersView() {
 
       {runError && <p className="ws-error-text" role="alert">{runError}</p>}
       {runNotice && <p className="ws-inline-note" role="status">{runNotice}</p>}
+      {gaps.data && (
+        <Panel title="Intelligence gaps" eyebrow={`${formatNumber(gaps.data.count)} GAPS · LAST ${gaps.data.window_days} DAYS`}>
+          <p className="ws-muted ws-small">{gaps.data.caveat}</p>
+          {(gaps.data.gaps || []).length ? <ul className="ws-compact-list">{gaps.data.gaps.slice(0, 12).map((gap, index) => <li key={`${gap.type}-${gap.provider || gap.category}-${index}`}><Badge tone={gap.status === "error" ? "danger" : "warn"}>{gap.type}</Badge><span>{gap.provider || gap.category}</span><span className="ws-muted">{gap.detail}</span></li>)}</ul> : <p className="ws-muted ws-small">No system-wide gaps were detected in this window.</p>}
+        </Panel>
+      )}
+
       {runResult && (
         <p className="ws-inline-note">
           <strong>{runResult.key}</strong> finished: {formatNumber(runResult.result?.events_created)} events created,{" "}
@@ -141,6 +149,8 @@ export default function ProvidersView() {
                 <div><dt>Enabled</dt><dd>{provider.enabled ? "yes" : "no"}</dd></div>
                 <div><dt>Last success</dt><dd>{formatRelativeTime(provider.last_success_at, "never")}</dd></div>
                 <div><dt>Last attempt</dt><dd>{formatRelativeTime(provider.last_attempt_at, "never")}</dd></div>
+                <div><dt>Data freshness</dt><dd>{humanise(provider.freshness_status || "unknown")}{provider.last_success_age_seconds != null ? ` · ${formatNumber(provider.last_success_age_seconds / 3600, 1)}h` : ""}</dd></div>
+                {provider.silent_zero && <div><dt>Silent zero</dt><dd className="ws-error-text">{provider.consecutive_empty_runs} consecutive successful empty runs</dd></div>}
                 <div><dt>Consecutive failures</dt><dd>{formatNumber(provider.consecutive_failures ?? 0)}</dd></div>
                 {provider.last_error && <div><dt>Last error</dt><dd className="ws-error-text">{provider.last_error}</dd></div>}
                 {provider.requires_credentials && <div><dt>Requires</dt><dd>credentials</dd></div>}
