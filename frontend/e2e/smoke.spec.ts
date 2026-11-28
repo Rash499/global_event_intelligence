@@ -6,7 +6,9 @@ const api = "http://127.0.0.1:8000";
 test("login, map loads, alerts view is accessible", async ({ page, request }) => {
   const seed = await request.post(`${api}/api/events/seed`, { data: { confirm: true } });
   expect(seed.ok()).toBeTruthy();
-  const email = `e2e-${Date.now()}@example.test`;
+  // example.com, not example.test: the API validates emails with
+  // Pydantic EmailStr, which rejects special-use TLDs such as .test.
+  const email = `e2e-${Date.now()}@example.com`;
   const register = await request.post(`${api}/api/auth/register`, {
     data: { display_name: "E2E Observer", email, password: "local-demo-password" },
   });
