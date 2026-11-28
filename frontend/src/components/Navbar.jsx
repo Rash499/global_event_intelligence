@@ -119,7 +119,7 @@ export default function Navbar({
             type="button"
             className="navbar-search"
             onClick={onOpenSearch}
-            aria-label="Search events, countries and sources (Cmd+K)"
+            aria-label="Search events, countries and sources (⌘K)"
           >
             <span aria-hidden="true">⌕</span>
             <span className="navbar-search-text">Search</span>
