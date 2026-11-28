@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.intelligence.source_catalog import credibility_score, source_metadata
 from app.intelligence.importance import calculate_importance_score
+from app.alerts.evaluator import alert_gate_decision
 
 
 def test_unknown_source_is_not_treated_as_tier_four():
@@ -13,7 +14,7 @@ def test_unknown_source_is_not_treated_as_tier_four():
 def test_catalog_marks_state_affiliation_and_research_region():
     result = source_metadata("feeds.bbci.co.uk")
     assert result["source_tier"] == 2
-    assert result["region"] if "region" in result else result["source_region"] == "United Kingdom"
+    assert result["source_region"] == "United Kingdom"
 
 
 def test_credibility_includes_independent_corroboration_but_not_truth_claim():
@@ -64,3 +65,41 @@ def test_corporate_financial_noise_is_demoted_without_entity_or_strong_classifie
 def test_strong_non_keyword_classifier_prevents_financial_demote():
     result = calculate_importance_score({"severity": 4, "title": "Shares rise", "classification_method": "ai_assisted", "classification_confidence": 0.9}, [])
     assert result["components"]["financial_noise_demoted"] is False
+
+
+def _alert_event(now, **overrides):
+    return {"severity": 9, "importance_score": 80, "occurred_at": now.isoformat(), **overrides}
+
+
+def test_alert_recency_gate_uses_fake_clock():
+    now = datetime(2026, 2, 1, tzinfo=timezone.utc)
+    ok, reason = alert_gate_decision(_alert_event(now - timedelta(minutes=16)), now=now)
+    assert (ok, reason) == (False, "recency_gate")
+
+
+def test_alert_importance_floor_and_severity_sensitivity():
+    now = datetime(2026, 2, 1, tzinfo=timezone.utc)
+    assert alert_gate_decision(_alert_event(now, importance_score=29), now=now)[1] == "importance_floor"
+    assert alert_gate_decision(_alert_event(now, severity=7), now=now, sensitivity="critical_only")[1] == "user_sensitivity"
+
+
+def test_alert_tier_gate_requires_non_keyword_classifier_for_tier_three_plus():
+    now = datetime(2026, 2, 1, tzinfo=timezone.utc)
+    event = _alert_event(now, classification_method="deterministic")
+    assert alert_gate_decision(event, now=now, source_tier="3", has_news_source=True)[1] == "source_tier_gate"
+    event["classification_method"] = "ai_assisted"
+    assert alert_gate_decision(event, now=now, source_tier="3", has_news_source=True)[0] is True
+
+
+def test_alert_story_phase_and_event_dedup_gates():
+    now = datetime(2026, 2, 1, tzinfo=timezone.utc)
+    assert alert_gate_decision(_alert_event(now), now=now, story_phase="fading")[1] == "story_phase_gate"
+    assert alert_gate_decision(_alert_event(now), now=now, last_event_alert_at=now - timedelta(minutes=5))[1] == "event_dedup"
+
+
+def test_global_cooldown_and_critical_override_only_for_high():
+    now = datetime(2026, 2, 1, tzinfo=timezone.utc)
+    recent_alert = now - timedelta(seconds=20)
+    assert alert_gate_decision(_alert_event(now, severity=7), now=now, last_global_alert_at=recent_alert, last_global_severity=7)[1] == "global_cooldown"
+    assert alert_gate_decision(_alert_event(now, severity=9), now=now, last_global_alert_at=recent_alert, last_global_severity=7)[0] is True
+    assert alert_gate_decision(_alert_event(now, severity=9), now=now, last_global_alert_at=recent_alert, last_global_severity=9)[1] == "global_cooldown"

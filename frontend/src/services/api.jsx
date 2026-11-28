@@ -289,6 +289,16 @@ export const getAlerts = async (status) => {
   return response.data;
 };
 
+export const getAlertPreferences = async () => {
+  const response = await api.get("/alerts/preferences");
+  return response.data;
+};
+
+export const updateAlertPreferences = async (sensitivity) => {
+  const response = await api.put("/alerts/preferences", { sensitivity });
+  return response.data;
+};
+
 export const updateAlertStatus = async (alertId, status) => {
   const response = await api.post(`/alerts/${alertId}/status`, { status });
   return response.data;

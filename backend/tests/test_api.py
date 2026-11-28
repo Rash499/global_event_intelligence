@@ -271,7 +271,16 @@ def test_unknown_country_code_is_404(client):
 # ----------------------------------------------------------------------
 # Alerts
 # ----------------------------------------------------------------------
+def _refresh_alert_fixture(seeded):
+    """Alert gate integration cases use events inside the 15-minute window."""
+    seeded.execute(
+        "UPDATE events SET occurred_at=?, event_time=?, importance_score=80",
+        (_iso(), _iso()),
+    )
+
+
 def test_alert_rule_creation_and_evaluation(client, seeded):
+    _refresh_alert_fixture(seeded)
     created = client.post(
         "/api/alert-rules",
         json={"name": "Japan earthquakes", "country_code": "jp", "category": "natural_disaster", "min_severity": 7},
@@ -291,16 +300,18 @@ def test_alert_rule_creation_and_evaluation(client, seeded):
 
 
 def test_alert_evaluation_is_idempotent(client, seeded):
+    _refresh_alert_fixture(seeded)
     client.post("/api/alert-rules", json={"name": "All disasters", "category": "natural_disaster"})
     from app.alerts.evaluator import evaluate_all_rules
 
     first = evaluate_all_rules()
     second = evaluate_all_rules()
-    assert first == 2
+    assert first == 1  # global 60-second cooldown suppresses the second matching event
     assert second == 0
 
 
 def test_alert_status_transitions(client, seeded):
+    _refresh_alert_fixture(seeded)
     client.post("/api/alert-rules", json={"name": "Any disaster", "category": "natural_disaster"})
     from app.alerts.evaluator import evaluate_all_rules
 

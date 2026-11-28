@@ -6,6 +6,8 @@ import {
   dismissAnomaly,
   getAlertRules,
   getAlerts,
+  getAlertPreferences,
+  updateAlertPreferences,
   getAnomalies,
   updateAlertStatus,
 } from "../../services/api.jsx";
@@ -28,6 +30,7 @@ const blankRule = {
 export default function AlertsView({ onSelectEvent }) {
   const [status, setStatus] = useState("new");
   const alerts = useApiResource(() => getAlerts(status), [status]);
+  const preferences = useApiResource(() => getAlertPreferences(), []);
   const rules = useApiResource(() => getAlertRules(), []);
   const anomalies = useApiResource(() => getAnomalies(), []);
   const [busy, setBusy] = useState(null);
@@ -84,6 +87,19 @@ export default function AlertsView({ onSelectEvent }) {
     }
   };
 
+  const changeSensitivity = async (sensitivity) => {
+    setBusy("sensitivity");
+    setError("");
+    try {
+      await updateAlertPreferences(sensitivity);
+      await preferences.reload();
+    } catch (caught) {
+      setError(caught?.response?.data?.detail || "Updating alert sensitivity failed. Sign in to save this setting.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const dismiss = async (id) => {
     setBusy(`anomaly-${id}`);
     try {
@@ -110,6 +126,15 @@ export default function AlertsView({ onSelectEvent }) {
       </header>
 
       {error && <p className="ws-error-text" role="alert">{error}</p>}
+
+      <Panel title="Alert sensitivity" eyebrow="ACCOUNT SETTING">
+        <p className="ws-muted ws-small">Noise controls suppress repeats, stale events, low-importance items and sustained or fading stories.</p>
+        <div className="ws-segmented" role="group" aria-label="Alert severity sensitivity">
+          {[ ["critical_and_high", "Critical and high"], ["critical_only", "Critical only"] ].map(([value, label]) => (
+            <button key={value} type="button" aria-pressed={(preferences.data?.sensitivity || "critical_and_high") === value} onClick={() => changeSensitivity(value)} disabled={busy === "sensitivity"}>{label}</button>
+          ))}
+        </div>
+      </Panel>
 
       <div className="ws-grid-main-aside">
         <Panel

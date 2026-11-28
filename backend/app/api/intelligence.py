@@ -976,6 +976,33 @@ class AlertRuleRequest(BaseModel):
     keywords: str | None = None
 
 
+@router.get("/alerts/preferences")
+def get_alert_preferences(user=Depends(get_optional_user)):
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in to manage alert sensitivity")
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT sensitivity FROM user_alert_preferences WHERE user_id=?", (user["id"],)).fetchone()
+    finally:
+        conn.close()
+    return {"sensitivity": row["sensitivity"] if row else "critical_and_high"}
+
+
+@router.put("/alerts/preferences")
+def update_alert_preferences(payload: dict = Body(...), user=Depends(get_optional_user)):
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in to manage alert sensitivity")
+    sensitivity = payload.get("sensitivity")
+    if sensitivity not in {"critical_only", "critical_and_high"}:
+        raise HTTPException(status_code=422, detail="Sensitivity must be critical_only or critical_and_high")
+    with write_connection() as conn:
+        conn.execute("""
+            INSERT INTO user_alert_preferences(user_id,sensitivity,updated_at) VALUES(?,?,?)
+            ON CONFLICT(user_id) DO UPDATE SET sensitivity=excluded.sensitivity,updated_at=excluded.updated_at
+        """, (user["id"], sensitivity, _iso(datetime.now(timezone.utc))))
+    return {"sensitivity": sensitivity}
+
+
 @router.get("/alerts")
 def alerts(
     status: str | None = Query(None, pattern="^(new|acknowledged|resolved|dismissed)$"),

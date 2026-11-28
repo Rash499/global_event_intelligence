@@ -1,0 +1,5 @@
+# Alert noise controls
+
+Alerts are rule matches that pass deterministic gates in order: event recency (at most 15 minutes old at evaluation time), importance floor (30/100), high-or-critical severity, the account's critical-only or critical-and-high preference, source-tier classification check, story phase, 30-minute per-event suppression, then a 60-second global cooldown. A critical item may bypass the global cooldown only when the cooldown was caused by a high-severity item; it does not bypass a critical alert's cooldown. Tier 3, tier 4 and undeclared *news sources* require a non-keyword ML/LLM classification. Structured provider observations without news articles are evaluated through their own provider evidence.
+
+Sustained/fading story metadata suppresses repeat alerts. Alert decisions remain descriptive; the gates are noise controls, not a prediction of future events. Sensitivity is stored per signed-in account in `user_alert_preferences`, and defaults to critical-and-high. Event and global cooldowns use persisted alert timestamps so repeat evaluations are stable across process restarts.

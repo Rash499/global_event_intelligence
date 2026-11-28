@@ -178,7 +178,11 @@ http://localhost:8000/docs
 
 Event details display a source-credibility badge and per-publisher catalog labels. The score ranks catalogued source metadata and independent corroboration; it does **not** judge whether an article is true. Publishers absent from the local catalog remain `undeclared`, not tier 4. The 0–100 `importance_score` is a separate ranking from the legacy impact/severity fields. Full definitions and weights are in [docs/scoring-and-source-credibility.md](docs/scoring-and-source-credibility.md).
 
-## 7. Optional local AI with Ollama
+## 7. Alert noise controls
+
+Alerts require recent, important, high/critical events and use per-event and global cooldowns. Signed-in users can select critical-only or critical-and-high sensitivity in Alerts. Tier 3+/undeclared news sources require non-keyword ML/LLM classification; structured observations remain eligible from their provider evidence. See [docs/alert-gates.md](docs/alert-gates.md).
+
+## 8. Optional local AI with Ollama
 
 Install Ollama separately, then pull a model, for example:
 
@@ -202,7 +206,7 @@ Restart FastAPI.
 
 The ingestion service will ask the local model to classify/summarize candidate articles. If Ollama is unavailable, the application automatically falls back to deterministic analysis, so the MVP still works.
 
-## 8. API examples
+## 9. API examples
 
 Latest events:
 ```text
@@ -232,7 +236,7 @@ GET  /api/ai/suggestions
 POST /api/ai/index        {"force": false, "limit": 300}
 ```
 
-## 9. Global Intelligence Assistant (Phase 3)
+## 10. Global Intelligence Assistant (Phase 3)
 
 The assistant answers questions strictly from indexed platform data. Every answer
 carries numbered evidence records and source links that were verified against the
